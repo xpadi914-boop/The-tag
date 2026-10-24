@@ -1,0 +1,1652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<title>The Tag Game</title>
+<script id="google-maps-script" onerror="window.__mapsLoadFailed=true" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBQp0M25FVaojU-_rxjJ-EH996yHWkcc2I&libraries=geometry"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #05080f;
+  --panel: #0c1220;
+  --panel2: #141c2b;
+  --border: #1e2a3d;
+  --text: #eef3fb;
+  --muted: #7a8ba3;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59,130,246,0.4);
+  --runner: #34d399;
+  --tagger: #fb923c;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --ghost: #c4b5fd;
+  --safe: #22d3ee;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+
+/* ========== SCREENS ========== */
+.screen { position: absolute; inset: 0; display: none; flex-direction: column; }
+.screen.active { display: flex; animation: fadeIn .4s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.map-picker-wrap{margin:10px 0 14px;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#0b1220}#center-picker{width:100%;height:220px}.picker-note{padding:8px 10px;font-size:.72rem;color:var(--muted)}
+/* ========== HOME ========== */
+#screen-home {
+  background: radial-gradient(ellipse at 30% 20%, #132038 0%, #070b14 60%);
+  justify-content: flex-start; align-items: stretch; padding: 24px;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+#screen-home .home-card { margin: auto; flex: 0 0 auto; }
+.map-status { position:absolute; inset:0; z-index:30; display:none; place-items:center; padding:24px; background:rgba(5,8,15,.96); text-align:center; }
+.map-status.show { display:grid; }
+.map-status-card { max-width:360px; background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:22px; }
+.zone-warning { position:absolute; left:50%; top:76px; transform:translateX(-50%); z-index:25; display:none; width:min(92%,360px); background:rgba(127,29,29,.96); border:2px solid var(--danger); border-radius:14px; padding:10px 14px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,.35); }
+.zone-warning.show { display:block; }
+.penalty-flash { position:fixed; inset:0; z-index:9999; display:none; place-items:center; padding:24px; background:rgba(180,0,0,.72); animation:penaltyFlash .42s ease-out; }
+.penalty-flash.show { display:grid; }
+.penalty-flash-card { width:min(92%,380px); background:#210606; border:3px solid #ff2b2b; border-radius:22px; padding:28px 22px; text-align:center; box-shadow:0 0 55px rgba(255,0,0,.65); }
+.penalty-flash-title { font-size:1.55rem; font-weight:950; color:#fff; margin-bottom:10px; }
+.penalty-flash-text { font-size:1rem; font-weight:700; color:#ffd7d7; line-height:1.45; }
+@keyframes penaltyFlash { 0% { opacity:0; } 25% { opacity:1; } 100% { opacity:1; } }
+.zone-warning .count { font-size:1.5rem; font-weight:900; font-variant-numeric:tabular-nums; }
+.gps-status { position:absolute; left:12px; bottom:76px; z-index:11; background:rgba(15,22,35,.9); border:1px solid var(--border); border-radius:10px; padding:6px 10px; font-size:.7rem; color:var(--muted); }
+@media (max-width:420px){ #screen-home{padding:12px;} #screen-home .home-card{margin:12px auto;} .home-card{padding:24px 18px;} }
+
+.home-card {
+  width: 100%; max-width: 400px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 28px;
+  padding: 32px 26px; box-shadow: 0 25px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(59,130,246,0.08);
+}
+.logo {
+  font-size: 2.8rem; font-weight: 900; letter-spacing: -1.8px;
+  background: linear-gradient(135deg, #3b82f6, #22c55e 50%, #f97316);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  text-align: center; margin-bottom: 4px;
+}
+.tagline { text-align: center; color: var(--muted); font-size: 0.9rem; margin-bottom: 28px; }
+
+input, select, button {
+  width: 100%; padding: 14px 16px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--panel2);
+  color: var(--text); font-size: 16px; margin-bottom: 12px;
+  transition: all .2s;
+}
+input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+button {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff; font-weight: 700; border: none; cursor: pointer;
+  letter-spacing: 0.3px;
+}
+button:active { transform: scale(0.97); }
+button.success { background: linear-gradient(135deg, #22c55e, #16a34a); }
+button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; margin-top: 4px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.tab {
+  flex: 1; text-align: center; padding: 10px; border-radius: 12px;
+  background: var(--panel2); color: var(--muted); font-weight: 600; cursor: pointer;
+  border: 1px solid transparent;
+}
+.tab.active { background: rgba(59,130,246,0.15); color: var(--accent); border-color: var(--accent); }
+
+/* ========== LOBBY ========== */
+#screen-lobby { background: var(--bg); padding: 16px; padding-top: 20px; overflow-y: auto; }
+.lobby-header { text-align: center; margin-bottom: 20px; }
+.lobby-code {
+  font-size: 2.4rem; font-weight: 900; letter-spacing: 8px;
+  color: var(--accent); text-shadow: 0 0 30px var(--accent-glow);
+}
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 18px; padding: 16px; margin-bottom: 12px;
+}
+.player-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.player-row:last-child { border-bottom: none; }
+.badge {
+  display: inline-flex; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+}
+.badge.ready { background: rgba(34,197,94,0.2); color: var(--runner); }
+.badge.wait { background: rgba(139,156,179,0.15); color: var(--muted); }
+.badge.tagger { background: rgba(249,115,22,0.2); color: var(--tagger); }
+.badge.runner { background: rgba(34,197,94,0.2); color: var(--runner); }
+
+/* ========== GAME (MAP FULL SCREEN) ========== */
+#screen-game { background: #000; }
+#map { position: absolute; inset: 0; }
+
+/* Top HUD */
+.top-hud {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+  padding: 12px 14px; padding-top: max(12px, env(safe-area-inset-top));
+  background: linear-gradient(to bottom, rgba(7,11,20,0.85) 0%, transparent 100%);
+  pointer-events: none;
+}
+.top-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hud-pill {
+  background: rgba(15,22,35,0.9); backdrop-filter: blur(12px);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 6px 14px; font-size: 0.8rem; font-weight: 600;
+  pointer-events: auto; display: flex; align-items: center; gap: 6px;
+}
+.hud-pill.timer { font-variant-numeric: tabular-nums; letter-spacing: 0.5px; }
+.hud-pill.snap { color: var(--warning); }
+.role-badge {
+  font-size: 0.7rem; font-weight: 800; padding: 4px 10px;
+  border-radius: 8px; letter-spacing: 0.5px;
+}
+.role-badge.tagger { background: var(--tagger); color: #000; }
+.role-badge.runner { background: var(--runner); color: #000; }
+
+/* Bottom bar */
+.bottom-bar {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+  padding: 10px 12px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(7,11,20,0.92) 0%, transparent 100%);
+  display: flex; justify-content: space-around; gap: 4px;
+}
+.nav-btn {
+  flex: 1; max-width: 70px; display: flex; flex-direction: column;
+  align-items: center; gap: 3px; background: none; border: none;
+  color: var(--muted); font-size: 0.65rem; font-weight: 600;
+  padding: 8px 4px; border-radius: 14px; cursor: pointer;
+  transition: all .2s;
+}
+.nav-btn svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.nav-btn.active, .nav-btn:active { color: var(--accent); background: rgba(59,130,246,0.12); }
+
+/* Slide-up panels */
+.panel {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: var(--panel); border-radius: 24px 24px 0 0;
+  border: 1px solid var(--border); border-bottom: none;
+  max-height: 70vh; transform: translateY(110%);
+  transition: transform .35s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex; flex-direction: column;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+}
+.panel.open { transform: translateY(0); }
+.panel-handle {
+  width: 40px; height: 4px; background: var(--border);
+  border-radius: 2px; margin: 10px auto 6px;
+}
+.panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 20px 12px; border-bottom: 1px solid var(--border);
+}
+.panel-header h2 { font-size: 1.1rem; font-weight: 700; }
+.panel-close {
+  background: var(--panel2); border: none; color: var(--muted);
+  width: 32px; height: 32px; border-radius: 50%; font-size: 1.2rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.panel-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+
+/* Team code big */
+.team-code-big {
+  font-size: 2.8rem; font-weight: 900; letter-spacing: 10px;
+  text-align: center; color: var(--warning);
+  text-shadow: 0 0 40px rgba(234,179,8,0.4);
+  margin: 16px 0; font-variant-numeric: tabular-nums;
+}
+
+/* Quest card */
+.quest-card {
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 14px; padding: 14px; margin-bottom: 10px;
+}
+.quest-card.active { border-color: var(--accent); background: rgba(59,130,246,0.08); }
+.quest-card.completed { border-color: var(--runner); opacity: 0.7; }
+.progress {
+  height: 6px; background: var(--border); border-radius: 3px;
+  margin-top: 8px; overflow: hidden;
+}
+.progress > div {
+  height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa);
+  transition: width .4s ease;
+}
+
+/* Chat */
+.chat-messages {
+  height: 220px; overflow-y: auto; background: var(--panel2);
+  border-radius: 12px; padding: 12px; margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+.chat-msg { margin-bottom: 8px; }
+.chat-msg .name { color: var(--accent); font-weight: 600; }
+
+/* Overlay for panels */
+.overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 15; opacity: 0; pointer-events: none;
+  transition: opacity .3s;
+}
+.overlay.show { opacity: 1; pointer-events: auto; }
+
+/* Game over */
+#screen-over {
+  background: radial-gradient(ellipse at center, #132038, #070b14);
+  justify-content: center; align-items: center; padding: 24px;
+}
+.over-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 24px; padding: 32px 24px; text-align: center;
+  max-width: 360px; width: 100%;
+}
+
+/* ===== PIXEL / MINECRAFT-INSPIRED UI ===== */
+:root{--mc-green:#55c93f;--mc-green-dark:#2f7d27;--mc-stone:#555;--mc-stone-dark:#2b2b2b;--mc-dirt:#6b4528;--mc-purple:#8b4de8;--mc-purple2:#3a185c;--mc-red:#b52a2a}
+body{font-family:monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,sans-serif;background:#111}
+.screen{image-rendering:pixelated}
+.mc-panel{background:linear-gradient(#3d3d3d,#262626);border:4px solid #111;box-shadow:inset 0 0 0 2px #777,8px 8px 0 rgba(0,0,0,.35);border-radius:2px}
+.mc-btn{border:3px solid #111!important;border-radius:2px!important;background:linear-gradient(#67d94b,#329c27)!important;box-shadow:inset 0 2px 0 rgba(255,255,255,.28),inset 0 -3px 0 rgba(0,0,0,.22),4px 4px 0 rgba(0,0,0,.35)!important;text-shadow:2px 2px #183b14;font-family:monospace!important;font-weight:900!important;letter-spacing:0!important}
+.mc-btn.blue{background:linear-gradient(#4aa4e8,#2567aa)!important}.mc-btn.gray{background:linear-gradient(#777,#4b4b4b)!important}.mc-btn:active{transform:translate(2px,2px)!important;box-shadow:inset 0 2px 0 rgba(255,255,255,.18),2px 2px 0 rgba(0,0,0,.35)!important}
+.pixel-input{border:3px solid #111!important;border-radius:2px!important;background:#171717!important;box-shadow:inset 2px 2px 0 #333!important;font-family:monospace!important}
+#screen-home{padding:0;overflow:hidden;justify-content:center;align-items:center;background:#111}
+.home-world{position:absolute;inset:0;overflow:hidden;background:linear-gradient(#071528 0 55%,#162914 55% 100%)}
+.home-world:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 31px,rgba(0,0,0,.12) 32px),repeating-linear-gradient(90deg,transparent 0 31px,rgba(0,0,0,.09) 32px);opacity:.55}
+.moon{position:absolute;width:72px;height:72px;right:12%;top:9%;background:#ddd;box-shadow:12px 0 #aaa,0 12px #c7c7c7,12px 12px #bbb}
+.torch{position:absolute;width:10px;height:38px;background:#6b4528;bottom:17%;box-shadow:0 -16px 0 #ffca28,0 -22px 0 #ff8a00,0 -28px 0 rgba(255,160,0,.5);animation:flicker .35s infinite alternate}
+.torch.a{left:12%}.torch.b{right:13%}
+@keyframes flicker{to{filter:brightness(1.35);transform:scaleY(1.04)}}
+.mc-character{position:absolute;width:74px;height:126px;bottom:11%;image-rendering:pixelated;animation:runBob .42s infinite alternate ease-in-out}
+.mc-character .head{position:absolute;width:44px;height:44px;left:15px;top:0;background:#b8784d;border:4px solid #5c3826;box-shadow:inset 20px 0 #c58b5d}
+.mc-character .body{position:absolute;width:48px;height:48px;left:13px;top:43px;background:#29a9d6;border:4px solid #185a78}
+.mc-character .arm{position:absolute;width:16px;height:48px;top:45px;background:#2a91b5;border:4px solid #174d66}.mc-character .arm.l{left:0;transform:rotate(18deg)}.mc-character .arm.r{right:0;transform:rotate(-18deg)}
+.mc-character .leg{position:absolute;width:18px;height:43px;top:89px;background:#6848a0;border:4px solid #3b285d}.mc-character .leg.l{left:16px}.mc-character .leg.r{right:16px}
+.mc-character.steve{left:32%;transform:scale(1.25)}.mc-character.steve{animation:runSteve .5s infinite alternate}
+.mc-zombie{position:absolute;right:25%;bottom:13%;transform:scale(.9);filter:hue-rotate(70deg);animation:chase .7s infinite alternate ease-in-out}
+@keyframes runBob{to{transform:translateY(-5px)}}@keyframes runSteve{to{transform:translate(10px,-5px) rotate(-2deg)}}@keyframes chase{to{transform:translate(-22px,-4px) scale(.92)}}
+.home-title{position:relative;z-index:4;text-align:center;margin-bottom:10px}.home-title .logo{font-family:monospace;font-size:3rem;letter-spacing:2px;color:#fff;text-shadow:4px 4px #222,0 0 0 #000;background:none;-webkit-text-fill-color:#fff}.home-title .tagline{color:#ddd;text-shadow:2px 2px #111;margin:0}
+.home-menu{position:relative;z-index:5;width:min(92%,390px);padding:18px}.player-name-wrap{margin-bottom:10px}.player-name-wrap label{color:#ddd;text-shadow:2px 2px #111}.home-menu .mc-btn{margin-bottom:10px}.home-menu .menu-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.home-menu .menu-row .mc-btn{margin:0}
+#home-setup{position:absolute;inset:0;z-index:40;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.62)}#home-setup.open{display:flex}.setup-card{width:min(96%,520px);max-height:90vh;overflow:auto;margin-bottom:2vh;padding:18px}.setup-card h2{font-size:1.3rem;color:#fff;margin-bottom:12px;text-shadow:2px 2px #111}
+#home-setup .tabs{display:flex}.setup-close{position:absolute;right:12px;top:12px;width:42px!important;padding:8px!important}
+.portal-transition{position:fixed;inset:0;z-index:10000;display:none;place-items:center;background:#05000c;overflow:hidden}.portal-transition.show{display:grid}.portal-core{width:48vmin;height:64vmin;max-width:330px;max-height:520px;position:relative;background:radial-gradient(ellipse at center,#d8a7ff 0,#7625c9 35%,#16001e 72%);box-shadow:0 0 70px #8d38e9,0 0 180px rgba(111,0,255,.55);animation:portalWarp 1.5s ease-in-out forwards;clip-path:polygon(18% 0,82% 0,100% 18%,100% 82%,82% 100%,18% 100%,0 82%,0 18%)}
+.portal-core:before,.portal-core:after{content:"";position:absolute;inset:-15%;background:repeating-conic-gradient(from 10deg,transparent 0 12deg,rgba(255,255,255,.28) 13deg 16deg,transparent 17deg 30deg);animation:spinPortal .8s linear infinite}.portal-core:after{filter:blur(7px);animation-duration:1.2s;opacity:.7}
+.portal-label{position:absolute;z-index:2;color:#fff;font-weight:900;font-size:1.1rem;text-shadow:3px 3px #2a0b42;bottom:8%;left:0;right:0;text-align:center;animation:portalText 1.5s ease-out forwards}
+@keyframes spinPortal{to{transform:rotate(360deg)}}@keyframes portalWarp{0%{transform:scale(.15) rotate(-10deg);opacity:0}35%{transform:scale(1) rotate(0);opacity:1}75%{transform:scale(1.25) rotate(2deg);filter:hue-rotate(10deg)}100%{transform:scale(7);opacity:0}}@keyframes portalText{0%{opacity:0}20%{opacity:1}70%{opacity:1}100%{opacity:0}}
+.role-transition{position:fixed;inset:0;z-index:9990;display:none;place-items:center;padding:24px}.role-transition.show{display:grid;animation:roleFade .35s}.role-card{width:min(94%,430px);padding:26px;text-align:center;border:4px solid #111;box-shadow:inset 0 0 0 2px #777,8px 8px 0 rgba(0,0,0,.45);background:#222}.role-card.runner{background:linear-gradient(#1e4c74,#122b43)}.role-card.tagger{background:linear-gradient(#671f1f,#2a0909)}.role-card h2{font-size:2rem;color:#fff;text-shadow:3px 3px #111;margin-bottom:10px}.role-sprite{width:100px;height:120px;margin:8px auto 18px;position:relative}.role-sprite .head{position:absolute;width:58px;height:58px;left:21px;top:0;background:#b8784d;border:5px solid #4b2e21}.role-sprite .body{position:absolute;width:62px;height:55px;left:19px;top:56px;background:#29a9d6;border:5px solid #174b67}.role-card.tagger .head{background:#4caf50;border-color:#1f5e27}.role-card.tagger .body{background:#4b8e52;border-color:#234d29}.role-card p{color:#ddd;margin-bottom:18px}.role-card button{max-width:260px;margin:0 auto}.role-sprite .eye{position:absolute;width:8px;height:8px;background:#111;top:20px}.role-sprite .eye.l{left:34px}.role-sprite .eye.r{left:52px}.role-card.tagger .eye{background:#ff2222;box-shadow:0 0 10px red}
+@keyframes roleFade{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+.mc-home-input{font-family:monospace!important;border:3px solid #111!important;border-radius:2px!important;background:#1b1b1b!important;color:#fff!important;box-shadow:inset 2px 2px #333!important}
+
+/* ===== MINECRAFT SKIN v2 ===== */
+:root{--bg:#1b2a14;--panel:#3a3a3a;--panel2:#2b2b2b;--accent:#5dd13a;--muted:#cfcfcf;--warning:#ffd23f}
+html,body,button,input,select,textarea{font-family:'VT323','Courier New',monospace!important}
+body{font-size:20px;background:#1b2a14}
+h1,h2,h3,.logo,.mc-btn,.nav-btn,.role-badge,.hud-pill.timer,.lobby-code,.tab,.count{font-family:'Press Start 2P','Courier New',monospace!important}
+h2{font-size:14px!important;line-height:1.5}
+button{border-radius:0!important;border:3px solid #111!important;background:linear-gradient(#9a9a9a,#5e5e5e)!important;color:#fff!important;text-shadow:2px 2px #3a3a3a;font-size:20px;box-shadow:inset 3px 3px 0 rgba(255,255,255,.4),inset -3px -3px 0 rgba(0,0,0,.35)!important}
+button.success,.mc-btn{background:linear-gradient(#72e04e,#3a9a27)!important}
+button.danger{background:linear-gradient(#ea6262,#a82222)!important}
+button:active{transform:translate(2px,2px)}
+input,select,textarea{border-radius:0!important;border:3px solid #111!important;background:#1c1c1c!important;color:#fff!important;font-size:22px!important;box-shadow:inset 3px 3px 0 #000,inset -3px -3px 0 #5a5a5a!important}
+.card,.panel,.over-card,.setup-card,.role-card,.map-status-card{border-radius:0!important;border:4px solid #111!important;background:linear-gradient(#4a4a4a,#333)!important;box-shadow:inset 0 0 0 3px #8b8b8b,6px 6px 0 rgba(0,0,0,.4)!important;color:#fff}
+.hud-pill{border-radius:0!important;border:3px solid #111!important;background:rgba(40,40,40,.94)!important;box-shadow:inset 0 0 0 2px #8b8b8b!important;color:#fff!important}
+.hud-pill.timer{font-size:13px}.role-badge{border-radius:0!important;border:3px solid #111}
+.bottom-bar{background:#2b2b2b!important;border-top:4px solid #111!important;gap:6px}
+.nav-btn{font-size:9px!important;color:#222!important;text-shadow:none!important;background:#8b8b8b!important;box-shadow:inset 3px 3px 0 #c6c6c6,inset -3px -3px 0 #555!important}
+.nav-btn svg{stroke:#222}.nav-btn.active,.nav-btn:active{background:#b5b5b5!important;outline:3px solid #fff}
+.panel-handle{display:none}.panel-header{border-bottom:4px solid #111}
+.gps-status{border-radius:0!important;border:3px solid #111;background:#2b2b2b!important;color:#9dff7a!important;font-size:18px}
+.lobby-code{background:#a8793f;border:4px solid #5b3b17;color:#fff;text-shadow:3px 3px #5b3b17;padding:14px;font-size:26px;letter-spacing:6px;box-shadow:inset 0 0 0 3px #c9964f}
+.tab{border-radius:0!important;font-size:11px}.tab.active{background:#5dd13a!important;color:#111!important}
+#tag-code{text-transform:uppercase;letter-spacing:6px;text-align:center}
+.zone-warning{border-radius:0!important;border:4px solid #111}.count{font-size:18px}
+/* home: Steve running, zombie right behind him */
+#screen-home{justify-content:flex-start!important;align-items:center!important;overflow-y:auto!important;background:#6b4a2b!important;background-image:linear-gradient(rgba(0,0,0,.14) 2px,transparent 2px),linear-gradient(90deg,rgba(0,0,0,.14) 2px,transparent 2px)!important;background-size:32px 32px!important}
+#screen-home .home-world,#screen-home .home-title{display:none!important}
+.mc-top{position:relative;flex:0 0 auto;width:100%;height:340px;overflow:hidden;background:linear-gradient(#5aa7f0,#a9d6ff 80%)}
+.mc-title{position:absolute;top:26px;left:0;right:0;text-align:center;z-index:3}
+.mc-title .logo{font-size:34px;color:#fff;text-shadow:4px 4px #3b3b3b;letter-spacing:3px;margin:0}
+.mc-title .tagline{font-family:'VT323',monospace!important;font-size:24px;color:#fff;text-shadow:2px 2px #3b3b3b;margin:10px 0 0}
+.mc-sun{position:absolute;right:28px;top:100px;width:44px;height:44px;background:#fff6a8;box-shadow:0 0 0 6px #ffe96b,0 0 0 12px rgba(255,233,107,.35)}
+.mc-cloud{position:absolute;height:22px;width:86px;background:#fff;box-shadow:22px -14px 0 #fff,44px 0 0 #fff;animation:cloud 26s linear infinite}
+.mc-cloud.c1{top:120px;left:-140px}.mc-cloud.c2{top:160px;left:-140px;animation-duration:38s;animation-delay:-14s;transform:scale(.7)}
+@keyframes cloud{to{left:110%}}
+.mc-run{position:absolute;left:0;right:0;bottom:0;height:200px}
+.mc-ground{position:absolute;left:0;right:0;bottom:0;height:46px;background:linear-gradient(#67b83f 0 14px,#4c8f2a 14px 18px,#7a5230 18px);border-top:4px solid #2f5a1a}
+.mc-ground:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 28px,rgba(0,0,0,.16) 28px 32px);animation:gscroll .45s linear infinite}
+@keyframes gscroll{to{background-position:-32px 0}}
+.spr{position:absolute;bottom:44px;height:144px;image-rendering:pixelated;overflow:visible}
+.spr.steve{left:54%;width:72px;animation:bob .3s infinite alternate steps(2)}
+.spr.zombie{left:14%;width:126px;animation:bob .34s infinite alternate steps(2),chase 3s infinite ease-in-out}
+@keyframes bob{to{bottom:50px}}@keyframes chase{50%{left:27%}}
+.spr .leg,.spr .arm.run{transform-box:fill-box;transform-origin:50% 0}
+.spr .a{animation:swA .3s infinite alternate ease-in-out}.spr .b{animation:swB .3s infinite alternate ease-in-out}
+@keyframes swA{from{transform:rotate(-40deg)}to{transform:rotate(40deg)}}@keyframes swB{from{transform:rotate(40deg)}to{transform:rotate(-40deg)}}
+.home-menu{margin:16px auto 28px!important}
+/* portals */
+#mc-portal{position:fixed;inset:0;z-index:20000;display:none;background:#000}#mc-portal.show{display:block}
+#mc-portal canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+#mc-portal b{position:absolute;left:0;right:0;bottom:14%;text-align:center;font:14px 'Press Start 2P',monospace;color:#fff;text-shadow:3px 3px #000}
+#mc-portal.nether:after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 14px #15101f,inset 0 0 0 20px #3a2a5c,inset 0 0 90px 30px rgba(190,90,255,.5)}
+#mc-portal.end:after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 120px 40px #000}
+@media (prefers-reduced-motion:reduce){.spr,.spr .a,.spr .b,.mc-cloud,.mc-ground:before{animation:none!important}}
+
+.mc-title .logo{background:none!important;-webkit-background-clip:border-box!important;-webkit-text-fill-color:#fff!important;color:#fff!important;letter-spacing:3px!important}
+.mc-title .tagline{font-size:21px!important;padding:0 10px}
+.mc-sun{top:122px!important;right:22px!important}
+.gps-status{bottom:calc(96px + env(safe-area-inset-bottom))!important;left:10px!important}
+#mc-portal b{text-shadow:2px 2px #000!important}
+
+.zone-warning{top:82px!important;text-align:center;padding:10px 12px!important;background:rgba(40,40,40,.97)!important;border:4px solid #111!important;box-shadow:inset 0 0 0 3px #888!important;color:#fff}
+.zone-warning.bad{background:rgba(150,16,16,.97)!important}.zone-warning.ok{background:rgba(16,100,36,.97)!important}
+.zone-warning .zt{font-family:'Press Start 2P',monospace;font-size:10px;letter-spacing:1px}
+.zone-warning .zc{font-family:'Press Start 2P',monospace;font-size:26px;margin:6px 0}
+.zone-warning .zh{font-family:'Press Start 2P',monospace;font-size:11px;line-height:1.5;margin-top:4px}
+.zone-warning .zs{font-size:21px;line-height:1.1;margin-top:5px}
+.zone-warning.fresh{animation:zpulse .45s ease-in-out 8 alternate}
+@keyframes zpulse{to{transform:translateX(-50%) scale(1.05)}}
+
+.hud-pill.tappable{cursor:pointer;display:flex;align-items:center;gap:8px}
+.hud-col{display:flex;flex-direction:column;line-height:1.05}.hud-sub{color:#cfcfcf;font-size:16px!important;font-family:'VT323',monospace!important}
+.hud-caret{margin-left:2px;opacity:.85;font-size:16px}
+.teams-scrim{position:absolute;inset:0;z-index:13;display:none;background:rgba(0,0,0,.35)}.teams-scrim.show{display:block}
+.teams-drawer{position:absolute;left:0;top:84px;bottom:112px;width:min(88%,340px);z-index:14;transform:translateX(-105%);transition:transform .22s ease;background:#2b2b2b;border:4px solid #111;border-left:0;box-shadow:inset 0 0 0 3px #8b8b8b,6px 6px 0 rgba(0,0,0,.4);display:flex;flex-direction:column}
+.teams-drawer.open{transform:none}
+.td-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:4px solid #111;font-family:'Press Start 2P',monospace;font-size:11px;color:#fff}
+.td-body{overflow-y:auto;padding:10px;-webkit-overflow-scrolling:touch}
+.td-sum{font-size:21px;color:#cfcfcf;margin-bottom:8px}
+.td-team{border:3px solid #111;background:#3a3a3a;margin-bottom:10px;padding:8px;box-shadow:inset 0 0 0 2px #666}
+.td-team.tagger{background:#4a3320;box-shadow:inset 0 0 0 2px #f97316}.td-team.me{box-shadow:inset 0 0 0 2px #5dd13a}.td-team.dead{opacity:.5}
+.td-th{display:flex;align-items:center;gap:8px;font-family:'Press Start 2P',monospace;font-size:10px;color:#fff;margin-bottom:6px}
+.td-chip{display:inline-block;min-width:34px;text-align:center;padding:3px 4px;border:2px solid #111;font-family:'Press Start 2P',monospace;font-size:9px;color:#fff;text-shadow:1px 1px #000}
+.td-role{margin-left:auto;font-size:8px;padding:3px 5px;border:2px solid #111;color:#000}.td-role.tagger{background:#f97316}.td-role.runner{background:#22c55e}
+.td-row{display:flex;align-items:center;gap:8px;font-size:23px;color:#fff;padding:3px 0}
+.td-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.td-dot{width:11px;height:11px;display:inline-block;border:2px solid #111}.td-dot.on{background:#5dd13a}.td-dot.off{background:#777}
+.td-hint{font-size:18px;color:#bdbdbd;margin-top:6px}
+.teams-drawer{top:108px!important}.td-head button{width:46px!important;flex:none;padding:4px!important}.hud-sub{white-space:nowrap}
+
+/* ===== V2.4 clean game screen ===== */
+.hud-pill.timer,.hud-pill.snap{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:4px 10px!important}
+.hud-pill .cap{font-family:'VT323',monospace!important;font-size:15px;color:#cfcfcf;letter-spacing:.5px}
+.hud-pill.timer #main-timer,.hud-pill.snap #snap-timer{font-family:'Press Start 2P',monospace!important;font-size:14px;color:#fff}
+.status-strip{position:absolute;left:10px;right:10px;top:72px;z-index:11;display:flex;flex-wrap:wrap;gap:5px;max-height:62px;overflow:hidden;pointer-events:none}
+.status-strip .legend-btn{pointer-events:auto;width:30px;padding:0!important;text-align:center}
+.chip{display:inline-block;background:rgba(32,32,32,.94)!important;border:3px solid #111!important;box-shadow:inset 0 0 0 2px #777!important;color:#fff!important;font:19px 'VT323',monospace!important;padding:0 8px!important;white-space:nowrap;border-radius:0!important;text-shadow:none!important;line-height:24px}
+.chip.ok{color:#9dff7a!important;box-shadow:inset 0 0 0 2px #2f8f2f!important}.chip.bad{background:#8f1d1d!important}.chip.warn{background:#6b5400!important;color:#ffe27a!important}
+#gps-status.chip{position:static!important}
+.toasts{position:absolute;left:0;right:0;top:140px;z-index:16;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast{background:#2b2b2b;border:3px solid #111;box-shadow:inset 0 0 0 2px #888;color:#fff;font:21px 'VT323',monospace;padding:4px 12px;max-width:92%;text-align:center;animation:tin .2s ease-out}
+.toast.ok{box-shadow:inset 0 0 0 2px #2f8f2f}.toast.bad{background:#7a1818}.toast.warn{background:#6b5400}
+@keyframes tin{from{transform:translateY(-8px);opacity:0}}
+.rail{position:absolute;right:10px;top:142px;z-index:11;display:flex;flex-direction:column;gap:6px}
+.slot{position:relative;width:46px;height:46px;padding:0!important;background:#8b8b8b!important;color:#222!important;text-shadow:none!important;box-shadow:inset 3px 3px 0 #c6c6c6,inset -3px -3px 0 #555!important}
+.slot .ic{font-size:22px;line-height:1}.slot .ct{position:absolute;right:2px;bottom:-1px;font:17px 'VT323',monospace;color:#fff;text-shadow:2px 2px #000}
+.slot.on{outline:3px solid #5dd13a}.slot.cd{opacity:.6}.slot[disabled]{cursor:default}
+.qc{position:absolute;left:10px;bottom:112px;z-index:11;width:min(64%,260px);display:none;background:rgba(32,32,32,.95);border:3px solid #111;box-shadow:inset 0 0 0 2px #888;padding:6px 8px;color:#fff}
+.qc.show{display:block}.qc .qt{font:19px 'VT323',monospace;color:#ffe27a;line-height:1.1}.qc .qs{font:19px 'VT323',monospace;line-height:1.1;margin:2px 0 4px}
+.qc .progress{height:8px}
+.fab{position:absolute;right:10px;bottom:112px;z-index:12;padding:10px 14px!important;background:linear-gradient(#ff9a3c,#d9600a)!important;font-family:'Press Start 2P',monospace!important;font-size:12px!important}
+.fab.cd{background:linear-gradient(#999,#555)!important}
+.legend{position:absolute;left:10px;right:10px;top:140px;z-index:17;display:none;background:rgba(32,32,32,.97);border:4px solid #111;box-shadow:inset 0 0 0 3px #888;padding:10px;color:#fff;font:20px 'VT323',monospace}
+.legend.show{display:block}.legend .lg-t{font-family:'Press Start 2P',monospace;font-size:10px;margin-bottom:6px}.legend .lg-t span{font-family:'VT323',monospace;font-size:17px;color:#bbb}
+.legend div{display:flex;align-items:center;gap:8px;margin:3px 0}.legend i{display:inline-block;width:22px;height:16px;border:3px solid #fff;flex:none}
+.outov{position:absolute;inset:0;z-index:30;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}.outov.show{display:flex}
+.outov .oc{background:#2b2b2b;border:4px solid #111;box-shadow:inset 0 0 0 3px #888;padding:18px;text-align:center;width:min(86%,320px)}
+.outov .ot{font-family:'Press Start 2P',monospace;font-size:13px;color:#ff6b6b;margin-bottom:10px;line-height:1.5}.outov .os{font-size:22px;margin-bottom:12px;color:#fff}
+.nav-btn{position:relative}.nbadge{position:absolute;top:2px;right:8px;min-width:20px;height:20px;background:#e11d48;color:#fff;border:2px solid #111;font:9px 'Press Start 2P',monospace;display:flex;align-items:center;justify-content:center}
+button.kick{width:34px;padding:2px 0!important;font-size:16px!important;background:linear-gradient(#ea6262,#a82222)!important}
+#btn-leave{margin-top:8px}
+.zone-warning{top:140px!important}.teams-drawer{top:140px!important}
+.top-hud{gap:8px!important}.hud-pill.tappable{flex:1;min-width:0;height:54px}.hud-col{min-width:0}.hud-sub{overflow:hidden;text-overflow:ellipsis}
+#chip-snap b{font-weight:normal;color:#ffe27a}
+.status-strip{top:80px!important}.toasts,.legend,.zone-warning,.teams-drawer{top:148px!important}.rail{top:150px!important}
+.status-strip.tight .chip{font-size:15px!important;padding:0 4px!important;line-height:20px!important}.status-strip{max-height:66px!important}
+.fab{width:auto!important;left:auto!important;min-width:96px}
+
+/* ===== bait quests, callouts, MVP ===== */
+.risky{display:inline-block;background:#f97316;color:#111;font:9px 'Press Start 2P',monospace;padding:3px 4px;border:2px solid #111;margin-left:4px;vertical-align:middle}
+.co-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+.co{padding:14px 2px!important;font-family:'Press Start 2P',monospace!important;font-size:10px!important;width:auto!important}
+.co.help{grid-column:span 3;background:linear-gradient(#ea6262,#a82222)!important;font-size:14px!important}
+.co-note{color:#cfcfcf;font:20px 'VT323',monospace;margin:6px 0}
+#screen-over{overflow-y:auto!important;justify-content:flex-start!important;padding:18px 0!important}
+.over-card{width:min(92%,420px)!important}
+.mvp{background:linear-gradient(#5a4a14,#3a2f0a);border:4px solid #111;box-shadow:inset 0 0 0 3px #ffd400;padding:12px;margin:8px 0 14px;text-align:center;animation:mvpglow 1.6s ease-in-out infinite alternate}
+@keyframes mvpglow{to{box-shadow:inset 0 0 0 3px #fff3a0,0 0 18px rgba(255,212,0,.6)}}
+.mvp .t{font:11px 'Press Start 2P',monospace;color:#ffd400}.mvp .n{font:17px 'Press Start 2P',monospace;color:#fff;margin:10px 0 4px;word-break:break-word}
+.mvp .mvp-sub{font:21px 'VT323',monospace;color:#ffe9a0;margin-bottom:8px}
+.mvp .c{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;font:20px 'VT323',monospace;color:#fff}.mvp .c span{background:#1f1f1f;border:2px solid #111;padding:0 6px}
+.mvp .pod{margin-top:10px;font:20px 'VT323',monospace;color:#ddd}.mvp .pod div{display:flex;justify-content:space-between}
+.mvp .mvp-how{margin-top:8px;font:16px 'VT323',monospace;color:#bda85a}
+</style>
+</head>
+<body>
+<div id="penalty-flash" class="penalty-flash" aria-live="assertive">
+  <div class="penalty-flash-card">
+    <div class="penalty-flash-title">⛔ MOVEMENT PENALTY</div>
+    <div class="penalty-flash-text">Sorry, you are under penalty, you can't move right now.</div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="screen-home" class="screen active">
+  <div class="mc-top">
+    <div class="mc-sun"></div><div class="mc-cloud c1"></div><div class="mc-cloud c2"></div>
+    <div class="mc-title"><div class="logo">THE TAG GAME</div><div class="tagline">Run. Hide. Hunt. Survive.</div></div>
+    <div class="mc-run"><div class="mc-ground"></div>
+      <svg class="spr zombie" viewBox="0 0 28 32" shape-rendering="crispEdges"><g class="leg b"><rect x="6" y="20" width="4" height="10" fill="#26266b"/><rect x="6" y="30" width="4" height="2" fill="#2e2e2e"/></g><rect x="5" y="8" width="6" height="12" fill="#1f9a9a"/><g class="leg a"><rect x="6" y="20" width="4" height="10" fill="#2f2f80"/><rect x="6" y="30" width="4" height="2" fill="#3a3a3a"/></g><rect x="9" y="13" width="15" height="4" fill="#4a8538"/><rect x="9" y="13" width="4" height="4" fill="#1f9a9a"/><rect x="9" y="9" width="16" height="4" fill="#5a9a45"/><rect x="9" y="9" width="4" height="4" fill="#26b0b0"/><rect x="4" y="0" width="8" height="8" fill="#5a9a45"/><rect x="4" y="0" width="8" height="3" fill="#3f7a30"/><rect x="4" y="3" width="2" height="3" fill="#3f7a30"/><rect x="8" y="4" width="2" height="1" fill="#111"/><rect x="8" y="6" width="3" height="1" fill="#2f5a28"/></svg>
+      <svg class="spr steve" viewBox="0 0 16 32" shape-rendering="crispEdges"><g class="leg b"><rect x="6" y="20" width="4" height="10" fill="#33338f"/><rect x="6" y="30" width="4" height="2" fill="#4a4a4a"/></g><g class="arm run a"><rect x="6" y="8" width="4" height="3" fill="#00a8a8"/><rect x="6" y="11" width="4" height="9" fill="#b9805a"/></g><rect x="5" y="8" width="6" height="12" fill="#00b8b8"/><g class="leg a"><rect x="6" y="20" width="4" height="10" fill="#3d3da8"/><rect x="6" y="30" width="4" height="2" fill="#5a5a5a"/></g><g class="arm run b"><rect x="6" y="8" width="4" height="3" fill="#00c4c4"/><rect x="6" y="11" width="4" height="9" fill="#c98e66"/></g><rect x="4" y="0" width="8" height="8" fill="#c98e66"/><rect x="4" y="0" width="8" height="3" fill="#3b2314"/><rect x="4" y="3" width="2" height="3" fill="#3b2314"/><rect x="8" y="4" width="2" height="1" fill="#fff"/><rect x="9" y="4" width="1" height="1" fill="#3f3fb5"/><rect x="8" y="6" width="3" height="1" fill="#8a5636"/></svg>
+    </div>
+  </div>
+
+  <div class="home-world">
+    <div class="moon"></div><div class="torch a"></div><div class="torch b"></div>
+    <div class="mc-character steve"><div class="head"></div><div class="body"></div><div class="arm l"></div><div class="arm r"></div><div class="leg l"></div><div class="leg r"></div></div>
+    <div class="mc-character mc-zombie"><div class="head"></div><div class="body"></div><div class="arm l"></div><div class="arm r"></div><div class="leg l"></div><div class="leg r"></div></div>
+  </div>
+  <div class="home-title"><div class="logo">IRL TAG</div><div class="tagline">RUN. HIDE. HUNT. SURVIVE.</div></div>
+  <div class="home-menu mc-panel">
+    <div class="player-name-wrap"><label>PLAYER NAME</label><input id="home-player-name" class="mc-home-input" maxlength="18" placeholder="Enter your name" value="Host"/></div>
+    <button class="mc-btn" onclick="openHomeSetup('create')">CREATE GAME</button>
+    <button class="mc-btn blue" onclick="openHomeSetup('join')">JOIN GAME</button>
+    <div class="menu-row"><button class="mc-btn gray" onclick="showMenuInfo('SETTINGS','Game settings can be configured when creating a game.')">SETTINGS</button><button class="mc-btn gray" onclick="showMenuInfo('HOW TO PLAY','Create or join a lobby, form your team, receive your role, then run, hunt, complete quests and survive.')">HOW TO PLAY</button></div>
+  </div>
+  <div id="home-setup">
+    <div class="setup-card mc-panel">
+      <button class="mc-btn gray setup-close" onclick="closeHomeSetup()">X</button>
+      <h2 id="setup-title">CREATE GAME</h2>
+      <div class="tabs"><div class="tab active" onclick="switchTab('create')">CREATE</div><div class="tab" onclick="switchTab('join')">JOIN</div></div>
+      <div id="tab-create">
+        <input id="create-name" class="pixel-input" placeholder="Your name" value="Host"/>
+
+        <div id="create-mode-pick" style="display:flex;gap:8px;margin:12px 0 16px">
+          <button type="button" class="mc-btn" id="btn-mode-preset" style="flex:1" onclick="setCreateMode('preset')">GAME PRESETS</button>
+          <button type="button" class="mc-btn gray" id="btn-mode-custom" style="flex:1" onclick="setCreateMode('custom')">CUSTOM GAME</button>
+        </div>
+        <input type="hidden" id="create-mode" value="preset"/>
+
+        <div id="preset-summary" class="picker-note" style="margin-bottom:12px">
+          Preset mode: you only set duration, radius, teams, and map center.
+          Server auto-scales head start, snapshots, and safe-zone timing from a 1-hour baseline (5 min head start · 5 min snapshots).
+        </div>
+
+        <label>Game Duration (minutes)</label>
+        <input id="create-duration" class="pixel-input" type="number" min="5" max="180" value="60" oninput="updatePresetPreview()"/>
+
+        <label>Initial Game Radius (meters)</label>
+        <input id="create-radius" class="pixel-input" type="number" min="500" max="20000" step="100" value="3000" oninput="updatePresetPreview()"/>
+
+        <label>Players Per Team</label>
+        <select id="create-team-size" class="pixel-input" onchange="toggleCustomTeams()">
+          <option value="1">1 player — Solo teams</option>
+          <option value="2" selected>2 players — Duos</option>
+          <option value="3">3 players — Trios</option>
+          <option value="4">4 players — Squads</option>
+          <option value="5">5 players</option>
+          <option value="6">6 players</option>
+          <option value="7">7 players</option>
+          <option value="8">8 players</option>
+          <option value="custom">Custom — you set runners &amp; taggers</option>
+        </select>
+
+        <label>Team Formation</label>
+        <select id="create-team-formation" class="pixel-input">
+          <option value="random" selected>Random Teams</option>
+          <option value="choose">Choose Teammates</option>
+        </select>
+
+        <div id="custom-team-box" style="display:none">
+          <label>Number of Runners</label><input id="create-custom-runners" class="pixel-input" type="number" min="1" max="60" step="1" value="3"/>
+          <label>Number of Taggers</label><input id="create-custom-taggers" class="pixel-input" type="number" min="1" max="60" step="1" value="1"/>
+          <div style="color:var(--muted);font-size:.8rem;margin:2px 0 8px">Every runner plays solo. All taggers hunt together as one team.</div>
+        </div>
+
+        <div id="preset-auto-box" class="picker-note" style="margin:10px 0;padding:10px;background:rgba(0,0,0,.25);border-radius:8px">
+          <div style="font-weight:700;margin-bottom:6px">Server will auto-set</div>
+          <div id="preset-preview-lines">Loading…</div>
+        </div>
+
+        <div id="custom-settings-box" style="display:none">
+          <label>Runner Location Snapshot Interval (minutes)</label>
+          <input id="create-snapshot" class="pixel-input" type="number" min="0.5" max="30" step="0.5" value="5"/>
+          <label>Runner Head Start (minutes)</label>
+          <input id="create-headstart" class="pixel-input" type="number" min="0" max="30" step="0.5" value="5"/>
+          <label>Initial Safe Period (minutes)</label>
+          <input id="create-safe-period" class="pixel-input" type="number" min="1" max="60" step="1" value="15"/>
+          <label>Safe-Zone Relocation Time (seconds)</label>
+          <input id="create-transition" class="pixel-input" type="number" min="120" max="900" step="30" value="240"/>
+          <label>Zone Spawn Difficulty</label>
+          <select id="create-zone-difficulty" class="pixel-input">
+            <option value="hard" selected>Hard — rare events</option>
+            <option value="normal">Normal</option>
+            <option value="veryhard">Very Hard — extremely rare</option>
+          </select>
+        </div>
+
+        <div class="map-picker-wrap"><div id="center-picker"></div><div class="picker-note">Tap the map or drag the marker to choose the game center.</div></div>
+        <input id="create-center-lat" type="hidden"/><input id="create-center-lng" type="hidden"/>
+        <button class="mc-btn" onclick="createGame()">CREATE LOBBY</button>
+      </div>
+      <div id="tab-join" style="display:none"><input id="join-name" class="pixel-input" placeholder="Your name" value="Player"/><input id="join-code" class="pixel-input" placeholder="GAME CODE" style="text-transform:uppercase;letter-spacing:4px;font-weight:700;text-align:center;font-size:1.2rem"/><button class="mc-btn blue" onclick="joinGame()">JOIN LOBBY</button></div>
+    </div>
+  </div>
+</div>
+<div id="mc-portal"><canvas></canvas><b></b></div>
+<div id="portal-transition" class="portal-transition"><div class="portal-core"><div class="portal-label">ENTERING WORLD...</div></div></div>
+<div id="role-transition" class="role-transition"><div id="role-card" class="role-card"><div class="role-sprite"><div class="head"></div><div class="body"></div><div class="eye l"></div><div class="eye r"></div></div><h2 id="role-title">YOU ARE A RUNNER</h2><p id="role-desc">Survive. Complete quests. Stay ahead.</p><button class="mc-btn" onclick="closeRoleReveal()">ENTER GAME</button></div></div>
+<div id="menu-info" class="role-transition"><div class="role-card runner"><h2 id="menu-info-title">HOW TO PLAY</h2><p id="menu-info-text"></p><button class="mc-btn" onclick="document.getElementById('menu-info').classList.remove('show')">OK</button></div></div>
+
+<!-- LOBBY -->
+<div id="screen-lobby" class="screen">
+  <div class="lobby-header">
+    <div style="color:var(--muted); font-size:0.85rem">Game Code</div>
+    <div class="lobby-code" id="lobby-code">————</div>
+    <div style="color:var(--muted); margin-top:4px"><span id="lobby-count">0</span> players</div>
+  </div>
+
+  <div class="card">
+    <div id="lobby-formation-note" style="color:var(--muted);font-size:.82rem;margin-bottom:10px">Random Teams mode: the server assigns teams when the host starts.</div>
+    <div style="font-weight:700; margin-bottom:8px">Players</div>
+    <div id="lobby-players"></div>
+  </div>
+
+  <div class="card">
+    <button id="btn-ready" class="secondary" onclick="toggleReady()">I'm Ready</button>
+    <button id="btn-start" class="success" onclick="startGame()" style="display:none">Start Game</button>
+    <button id="btn-leave" class="secondary" onclick="leaveLobby()">Leave Lobby</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="screen-game" class="screen">
+  <div id="map"></div>
+  <div id="map-status" class="map-status"><div class="map-status-card"><h2 id="map-status-title">Map unavailable</h2><p id="map-status-text" style="color:var(--muted);margin:10px 0 16px">Google Maps could not be initialized. Check your connection or Maps API configuration.</p><button class="secondary" onclick="retryMap()">Retry Map</button></div></div>
+  <div id="zone-warning" class="zone-warning"></div>
+
+  <!-- Top HUD -->
+  <div class="top-hud">
+    <div class="top-row">
+      <div class="hud-pill tappable" onclick="openTeams()">
+        <span class="role-badge" id="role-badge">—</span>
+        <span class="hud-col"><span id="team-label">Team —</span><span id="role-info" class="hud-sub"></span></span>
+        <span class="hud-caret">&#9776;</span>
+      </div>
+      <div class="hud-pill timer"><span class="cap" id="timer-cap">TIME LEFT</span><span id="main-timer">—:—</span></div>
+    </div>
+  </div>
+  <div class="status-strip" id="status-strip">
+    <span class="chip" id="chip-phase" style="display:none"></span>
+    <span class="chip" id="chip-zone" style="display:none"></span>
+    <span class="chip" id="chip-pen" style="display:none"></span>
+    <span class="chip" id="chip-conn" style="display:none">📡 NO CONNECTION</span>
+    <span class="chip" id="chip-snap" style="display:none"><span id="snap-cap">NEXT SNAPSHOT</span> <b id="snap-timer">—</b></span>
+    <span class="chip" id="gps-status">GPS: waiting</span>
+    <button class="chip legend-btn" onclick="toggleLegend()">?</button>
+  </div>
+  <div id="toasts" class="toasts"></div>
+  <div id="powerup-rail" class="rail"></div>
+  <div id="quest-card2" class="qc"></div>
+  <button id="fab-tag" class="fab" style="display:none" onclick="openTag()">TAG</button>
+  <div id="legend" class="legend" onclick="toggleLegend()">
+    <div class="lg-t">MAP KEY <span>(tap to close)</span></div>
+    <div><i style="border-color:#00e5ff"></i>Safe zone now</div>
+    <div><i style="border-color:#7cff3a;background:rgba(124,255,58,.25)"></i>NEW safe zone - go here</div>
+    <div><i style="background:rgba(255,42,42,.4);border-color:#a33"></i>Red tint = outside, unsafe</div>
+    <div><i style="border-color:#b36cff"></i>Game border</div>
+    <div><i style="border-color:#ff3b3b;background:rgba(255,59,59,.3)"></i>Danger zone: runners seen live</div>
+    <div><i style="border-color:#ffd400;background:rgba(255,212,0,.3)"></i>Buff zone: rare boost</div>
+    <div><i style="border-color:#5dd13a;background:#5dd13a"></i>You</div>
+    <div><i style="border-color:#111;background:#a855f7"></i>Players: letter = team, number = player</div>
+    <div><i style="border-color:#111;background:#3b82f6"></i>Q = quest spot</div>
+    <div><i style="border-color:#ffe27a"></i>👁 REVEAL = when taggers see where runners were</div>
+  </div>
+  <div id="out-overlay" class="outov"><div class="oc"><div class="ot">YOU WERE TAGGED OUT</div><div class="os">You can still watch the map and chat. Good game!</div><button onclick="document.getElementById('out-overlay').classList.remove('show')">OK</button></div></div>
+  <div id="teams-scrim" class="teams-scrim" onclick="closeTeams()"></div>
+  <div id="teams-drawer" class="teams-drawer"><div class="td-head"><span>TEAMS &amp; PLAYERS</span><button onclick="closeTeams()" style="padding:4px 10px">X</button></div><div id="teams-body" class="td-body"></div></div>
+
+  <!-- Bottom navigation -->
+  <div class="bottom-bar">
+    <button class="nav-btn" onclick="openPanel('team')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+      Team
+    </button>
+    <button class="nav-btn" onclick="openPanel('quests')">
+      <svg viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4.5 2 7L12 17l-6.5 3.5 2-7L2 9h7z"/></svg>
+      Quests
+    </button>
+    <button class="nav-btn" id="nav-chat" onclick="openPanel('chat')">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      Chat
+    </button>
+    <button class="nav-btn" id="nav-call" onclick="openPanel('callouts')">
+      <svg viewBox="0 0 24 24"><path d="M3 11v3a1 1 0 001 1h3l5 4V6L7 10H4a1 1 0 00-1 1z"/><path d="M16 8a5 5 0 010 8"/></svg>
+      Call
+    </button>
+    <button class="nav-btn" onclick="openPanel('actions')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
+      More
+    </button>
+  </div>
+
+  <!-- Overlay -->
+  <div class="overlay" id="overlay" onclick="closePanels()"></div>
+
+  <!-- TEAM PANEL -->
+  <div class="panel" id="panel-team">
+    <div class="panel-handle"></div>
+    <div class="panel-header">
+      <h2>Your Team</h2>
+      <button class="panel-close" onclick="closePanels()">×</button>
+    </div>
+    <div class="panel-body" id="panel-team-body"></div>
+  </div>
+
+  <!-- QUESTS PANEL -->
+  <div class="panel" id="panel-quests">
+    <div class="panel-handle"></div>
+    <div class="panel-header">
+      <h2>Quests</h2>
+      <button class="panel-close" onclick="closePanels()">×</button>
+    </div>
+    <div class="panel-body" id="panel-quests-body"></div>
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div class="panel" id="panel-callouts">
+    <div class="panel-handle"></div>
+    <div class="panel-header"><h2>Team Callouts</h2><button class="panel-close" onclick="closePanels()">×</button></div>
+    <div class="panel-body">
+      <div class="co-note">Only your teammates see these. One every few seconds.</div>
+      <div class="co-grid">
+        <button class="co help" onclick="callout('help')">❗ HELP</button>
+        <button class="co" onclick="callout('hide')">🙈 HIDE</button>
+        <button class="co" onclick="callout('split')">✂ SPLIT</button>
+        <button class="co" onclick="callout('north')">⬆ NORTH</button>
+        <button class="co" onclick="callout('south')">⬇ SOUTH</button>
+        <button class="co" onclick="callout('east')">➡ EAST</button>
+        <button class="co" onclick="callout('west')">⬅ WEST</button>
+      </div>
+      <div id="co-status" class="co-note"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-chat">
+    <div class="panel-handle"></div>
+    <div class="panel-header">
+      <h2>Chat</h2>
+      <button class="panel-close" onclick="closePanels()">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="chat-messages" id="chat-messages"></div>
+      <div style="display:flex; gap:8px">
+        <input id="chat-input" placeholder="Message..." style="margin:0" onkeydown="if(event.key==='Enter')sendChat()"/>
+        <button style="width:auto; margin:0; padding:12px 18px" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIONS PANEL -->
+  <div class="panel" id="panel-actions">
+    <div class="panel-handle"></div>
+    <div class="panel-header">
+      <h2>Actions</h2>
+      <button class="panel-close" onclick="closePanels()">×</button>
+    </div>
+    <div class="panel-body" id="panel-actions-body"></div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="screen-over" class="screen">
+  <div class="over-card">
+    <div style="font-size:1.1rem; color:var(--muted); margin-bottom:8px">Game Over</div>
+    <div id="over-winner" style="font-size:1.8rem; font-weight:800; margin-bottom:12px">—</div>
+    <div id="over-mvp"></div>
+    <div style="color:var(--muted); font-size:0.9rem">Forfeit</div>
+    <div id="over-forfeit" style="font-size:1.2rem; color:var(--warning); font-weight:600; margin:10px 0 14px">—</div>
+    <div id="over-stats" style="text-align:left;font-size:.85rem;color:var(--muted);margin-bottom:16px"></div>
+    <button onclick="location.reload()">Back to Home</button>
+  </div>
+</div>
+
+<script>
+const API = location.origin;
+const GOOGLE_KEY = 'AIzaSyBQp0M25FVaojU-_rxjJ-EH996yHWkcc2I';
+
+let S = {
+  gameId: null, playerId: null, playerName: null, sessionToken: null, isHost: false,
+  poll: null, last: null, map: null, markers: {},
+  gpsWatch: null, actionsSignature: null, myMarker: null, accuracyCircle: null, boundaryCircle: null, safeZoneCircle: null, pendingZoneCircle: null, centerPicker: null, centerPickerMarker: null
+};
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  if (id === 'game' && S.last) initMap(S.last);
+  if (id === 'home' && document.getElementById('home-setup')?.classList.contains('open')) setTimeout(initCenterPicker,50);
+}
+
+let centerPickerReady=false;
+let roleRevealShown=false;
+let transitionBusy=false;
+function initCenterPicker(){
+  if(centerPickerReady||!document.getElementById('center-picker')) return;
+  if(!window.google?.maps){ document.getElementById('center-picker').innerHTML='<div style="height:220px;display:grid;place-items:center;padding:20px;text-align:center;color:var(--muted)">Map unavailable. Check Google Maps configuration before creating the game.</div>'; return; }
+  centerPickerReady=true;
+  const map=new google.maps.Map(document.getElementById('center-picker'),{center:{lat:20.5937,lng:78.9629},zoom:5,mapTypeId:'roadmap',streetViewControl:false,fullscreenControl:false,mapTypeControl:false,zoomControl:true});
+  S.centerPicker=map;
+  const marker=new google.maps.Marker({map,position:{lat:20.5937,lng:78.9629},draggable:true,title:'Game Center'});
+  S.centerPickerMarker=marker;
+  const setCenter=ll=>{const lat=ll.lat(),lng=ll.lng();marker.setVisible(true);document.getElementById('create-center-lat').value=lat;document.getElementById('create-center-lng').value=lng;marker.setPosition({lat,lng});map.panTo({lat,lng});};
+  map.addListener('click',e=>setCenter(e.latLng));marker.addListener('dragend',e=>setCenter(e.latLng));
+  marker.setVisible(false);
+  navigator.geolocation&&navigator.geolocation.getCurrentPosition(p=>{setCenter(new google.maps.LatLng(p.coords.latitude,p.coords.longitude));map.setZoom(15);},()=>{},{enableHighAccuracy:true,timeout:12000});
+}
+
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.tab[onclick*="${t}"]`).classList.add('active');
+  document.getElementById('tab-create').style.display = t === 'create' ? 'block' : 'none';
+  document.getElementById('tab-join').style.display = t === 'join' ? 'block' : 'none';
+}
+
+async function api(path, body) {
+  const opts = body ? { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...body, sessionToken: body.sessionToken || S.sessionToken}) } : {};
+  const res = await fetch(API + path, opts);
+  const data = await res.json();
+  if (!res.ok) {
+    const err=new Error(data.error || 'Failed');
+    err.code=data.error;
+    err.penaltyUntil=data.penaltyUntil;
+    err.status=res.status;
+    throw err;
+  }
+  return data;
+}
+
+function openHomeSetup(tab){
+  const n=document.getElementById('home-player-name')?.value?.trim()||'Player';
+  document.getElementById('create-name').value=n; document.getElementById('join-name').value=n;
+  document.getElementById('home-setup').classList.add('open');
+  switchTab(tab); setTimeout(initCenterPicker,60);
+  if(tab==='create' && typeof setCreateMode==='function') setCreateMode('preset');
+}
+function closeHomeSetup(){document.getElementById('home-setup').classList.remove('open');}
+function showMenuInfo(title,text){document.getElementById('menu-info-title').textContent=title;document.getElementById('menu-info-text').textContent=text;document.getElementById('menu-info').classList.add('show')}
+function playPortalTransition(done){
+  if(transitionBusy)return; transitionBusy=true; const el=document.getElementById('portal-transition'); el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  setTimeout(()=>{el.classList.remove('show');transitionBusy=false;if(done)done()},1050);
+}
+function showRoleReveal(s){
+  if(roleRevealShown)return; roleRevealShown=true;
+  const role=s.myTeam?.role==='tagger'?'tagger':'runner'; const card=document.getElementById('role-card'); card.className='role-card '+role;
+  document.getElementById('role-title').textContent=role==='tagger'?'YOU ARE A TAGGER':'YOU ARE A RUNNER';
+  document.getElementById('role-desc').textContent=role==='tagger'?'Hunt the Runners. Use their team codes. Eliminate them.':'Survive. Complete quests. Avoid the Tagger. Use power-ups.';
+  const rt=document.getElementById('role-transition'); rt.classList.add('show');
+}
+function closeRoleReveal(){document.getElementById('role-transition').classList.remove('show');}
+
+
+function setCreateMode(mode){
+  document.getElementById('create-mode').value = mode;
+  const presetBtn=document.getElementById('btn-mode-preset');
+  const customBtn=document.getElementById('btn-mode-custom');
+  const customBox=document.getElementById('custom-settings-box');
+  const autoBox=document.getElementById('preset-auto-box');
+  if(mode==='preset'){
+    if(presetBtn){ presetBtn.className='mc-btn'; }
+    if(customBtn){ customBtn.className='mc-btn gray'; }
+    if(customBox) customBox.style.display='none';
+    if(autoBox) autoBox.style.display='block';
+  } else {
+    if(presetBtn){ presetBtn.className='mc-btn gray'; }
+    if(customBtn){ customBtn.className='mc-btn'; }
+    if(customBox) customBox.style.display='block';
+    if(autoBox) autoBox.style.display='none';
+  }
+  updatePresetPreview();
+}
+
+/** Scale from 1-hour baseline: 5 min head start, 5 min snapshot. Zone timing from duration + radius. */
+function computePresetSettings(durationMin, radiusM){
+  const scale = Math.max(0.15, (durationMin || 60) / 60);
+  const headStartMin = Math.max(1, Math.round(5 * scale * 2) / 2);
+  const snapshotMin = Math.max(1, Math.round(5 * scale * 2) / 2);
+  // Safe period: ~25% of game, but leave room for shrinks; scale slightly with radius
+  const radiusFactor = Math.min(1.35, Math.max(0.75, (radiusM || 3000) / 3000));
+  let safePeriodMin = Math.round(durationMin * 0.22 * radiusFactor);
+  safePeriodMin = Math.max(2, Math.min(Math.floor(durationMin * 0.4), safePeriodMin));
+  // Relocation time: bigger radius needs more walk time (min 120s)
+  const transitionSec = Math.max(120, Math.min(900, Math.round(90 + (radiusM || 3000) * 0.06)));
+  // Shrink interval band
+  const minInterval = Math.max(90, Math.round(durationMin * 60 * 0.12));
+  const maxInterval = Math.max(minInterval + 60, Math.round(durationMin * 60 * 0.22));
+  return { headStartMin, snapshotMin, safePeriodMin, transitionSec, minInterval, maxInterval };
+}
+
+function updatePresetPreview(){
+  const el = document.getElementById('preset-preview-lines');
+  if(!el) return;
+  const durationMin = Number.isFinite(+document.getElementById('create-duration')?.value) ? +document.getElementById('create-duration').value : 60;
+  const radiusM = +document.getElementById('create-radius')?.value || 3000;
+  const p = computePresetSettings(durationMin, radiusM);
+  el.innerHTML =
+    `Head start: <b>${p.headStartMin} min</b><br>` +
+    `Snapshot interval: <b>${p.snapshotMin} min</b><br>` +
+    `First shrink after: <b>~${p.safePeriodMin} min</b><br>` +
+    `Relocation time: <b>${p.transitionSec}s</b><br>` +
+    `Later shrinks every: <b>~${Math.round(p.minInterval/60)}–${Math.round(p.maxInterval/60)} min</b>`;
+}
+
+
+async function createGame() {
+  try {
+    const _la=document.getElementById('create-center-lat').value,_ln=document.getElementById('create-center-lng').value;
+    const centerLat=Number(_la),centerLng=Number(_ln);
+    const custom=document.getElementById('create-team-size').value==='custom';
+    const cR=Math.floor(+document.getElementById('create-custom-runners').value),cT=Math.floor(+document.getElementById('create-custom-taggers').value);
+    if(custom&&(!(cR>=1)||!(cT>=1)||cR>60||cT>60)) return alert('Custom teams: enter at least 1 runner and 1 tagger (max 60 each).');
+    if(_la===''||_ln===''||!Number.isFinite(centerLat)||!Number.isFinite(centerLng)) return alert('Pick the game center on the map first.');
+    const mode=document.getElementById('create-mode').value||'preset';
+    const durationMin=Number.isFinite(+document.getElementById('create-duration').value)?+document.getElementById('create-duration').value:60;
+    const radiusM=+document.getElementById('create-radius').value||3000;
+    const payload={
+      name:document.getElementById('create-name').value||'Host',
+      durationSeconds:durationMin*60,
+      initialRadiusMeters:radiusM,
+      teamSize:custom?1:(+document.getElementById('create-team-size').value||2),
+      teamMode:custom?'custom':'standard',customRunners:cR,customTaggers:cT,
+      teamFormation:document.getElementById('create-team-formation').value,
+      centerLat,centerLng,
+      preset: mode==='preset'
+    };
+    if(mode==='custom'){
+      const difficulty=document.getElementById('create-zone-difficulty').value;
+      const zone={hard:[600,1200,0.15,1],normal:[300,600,0.30,2],veryhard:[900,1800,0.08,1]}[difficulty];
+      payload.snapshotIntervalSeconds=(Number.isFinite(+document.getElementById('create-snapshot').value)?+document.getElementById('create-snapshot').value:5)*60;
+      payload.headStartSeconds=(Number.isFinite(+document.getElementById('create-headstart').value)?+document.getElementById('create-headstart').value:5)*60;
+      payload.safePeriodSeconds=(Number.isFinite(+document.getElementById('create-safe-period').value)?+document.getElementById('create-safe-period').value:15)*60;
+      payload.zoneTransitionSeconds=(Number.isFinite(+document.getElementById('create-transition').value)?+document.getElementById('create-transition').value:240);
+      payload.zoneMinIntervalSeconds=zone[0];
+      payload.zoneMaxIntervalSeconds=zone[1];
+      payload.buffSpawnChance=zone[2];
+      payload.maxBuffZonesPerGame=zone[3];
+      payload.zoneDifficulty=difficulty;
+    }
+    const data=await api('/api/create', payload);
+    S.gameId=data.gameId;S.playerId=data.playerId;S.playerName=data.playerName;S.sessionToken=data.sessionToken;S.isHost=true;
+    closeHomeSetup(); playPortalTransition(()=>{startPoll();show('lobby')});
+  } catch(e){alert(e.message);}
+}
+
+async function joinGame() {
+  try {
+    const data = await api('/api/join', {
+      name: document.getElementById('join-name').value || 'Player',
+      code: document.getElementById('join-code').value.trim()
+    });
+    S.gameId=data.gameId; S.playerId=data.playerId; S.playerName=data.playerName; S.sessionToken=data.sessionToken; S.isHost=false;
+    closeHomeSetup(); playPortalTransition(()=>{startPoll();show('lobby')});
+  } catch(e) { alert(e.message); }
+}
+
+function startPoll() {
+  if (S.poll) clearInterval(S.poll);
+  S.poll = setInterval(fetchState, 1500);
+  fetchState();
+}
+
+async function fetchState() {
+  if (!S.gameId || !S.playerId) return;
+  try {
+    const s = await api(`/api/state?gameId=${S.gameId}&playerId=${S.playerId}&sessionToken=${encodeURIComponent(S.sessionToken||'')}`);
+    S.fails = 0; setConn(true);
+    S.last = s;
+    render(s);
+  } catch(e) {
+    console.error(e);
+    if (e.status === 401 || e.status === 404) { endSession(e.status === 404 ? 'This game no longer exists (the server may have restarted).' : 'You were removed from this game.'); return; }
+    S.fails = (S.fails || 0) + 1; if (S.fails >= 3) setConn(false);
+  }
+}
+
+function render(s) {
+  if (s.status === 'lobby') { show('lobby'); renderLobby(s); }
+  else if (s.status === 'ended') {
+    show('over');
+    document.getElementById('over-winner').textContent = s.winner === 'taggers' ? 'TAGGERS WIN' : s.winner === 'host' ? 'GAME ENDED BY HOST' : 'RUNNERS SURVIVE';
+    document.getElementById('over-forfeit').textContent = s.forfeit || '—';
+    try{ renderMvp(s); }catch(e){ console.error(e); }
+    const stEl=document.getElementById('over-stats');
+    if(stEl && s.matchStats){
+      const rows=Object.values(s.matchStats.teams||{}).map(t=>{
+        const mins=Math.floor((t.surviveSeconds||0)/60), sec=(t.surviveSeconds||0)%60;
+        return `<div style="margin:6px 0;padding:8px;background:var(--panel2);border-radius:10px">
+          <b>Team ${t.number}</b> (${t.role}) — ${t.survived?'Survived':'Eliminated'}
+          <div>Distance ~${t.distanceM||0}m · Quests ${t.quests||0} · Tags ${t.tagsMade||0} · Time ${mins}:${String(sec).padStart(2,'0')}</div>
+        </div>`;
+      }).join('');
+      stEl.innerHTML = `<div style="font-weight:700;margin-bottom:8px;color:var(--text)">Match Stats</div>${rows}<div style="margin-top:8px">Total tags: ${s.matchStats.tags||0} · Quests done: ${s.matchStats.questsCompleted||0}</div>`;
+    } else if(stEl) stEl.innerHTML='';
+  } else {
+    show('game');
+    renderGame(s);
+  }
+}
+
+function renderLobby(s) {
+  document.getElementById('lobby-code').textContent = s.code;
+  document.getElementById('lobby-count').textContent = s.players.length;
+  const formation = s.teamFormation || 'random';
+  let playersHtml = s.players.map(p => {
+    const teammate = p.teammateId ? s.players.find(x => x.id === p.teammateId) : null;
+    const choice = formation === 'choose' && p.isMe ? `
+      <select onchange="chooseTeammate(this.value)" style="max-width:170px;margin:0">
+        <option value="">Choose teammate…</option>
+        ${s.players.filter(x => x.id !== p.id).map(x => `<option value="${x.id}" ${p.teammateId===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}
+      </select>` : (formation === 'choose' && teammate ? `<span class="badge ready">↔ ${esc(teammate.name)}</span>` : '');
+    return `<div class="player-row">
+      <span>${esc(p.name)}${p.isMe ? ' (you)' : ''}${s.me.isHost && p.id === s.me.id ? ' 👑' : ''}</span>
+      <span style="display:flex;gap:6px;align-items:center">${choice}<span class="badge ${p.isReady ? 'ready' : 'wait'}">${p.isReady ? 'Ready' : 'Waiting'}</span>${s.me.isHost&&!p.isMe?`<button class="kick" onclick="kickPlayer('${p.id}')">✕</button>`:''}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('lobby-players').innerHTML = playersHtml;
+  const formationNote=document.getElementById('lobby-formation-note');
+  if(formationNote) formationNote.textContent = s.teamMode==='custom' ? `Custom game: ${s.customTaggers} tagger(s) + ${s.customRunners} runner(s) = ${s.customTaggers+s.customRunners} players needed (you have ${s.players.length}). Roles are picked randomly at start. Every runner plays solo.` : formation === 'choose' ? 'Choose Teammates mode: select the player you want on your team. Mutual choices are preserved.' : 'Random Teams mode: the server assigns teams when the host starts.';
+  const btn = document.getElementById('btn-ready');
+  btn.textContent = s.me.isReady ? 'Unready' : "I'm Ready";
+  btn.className = s.me.isReady ? 'secondary' : 'success';
+  document.getElementById('btn-start').style.display = s.me.isHost ? 'block' : 'none';
+}
+
+function renderGame(s) {
+  // Keep a continuous real GPS watch running during gameplay.
+  if(!S.gpsWatch && navigator.geolocation) startGPSWatch();
+  // Role badge
+  const roleEl = document.getElementById('role-badge');
+  const teamEl = document.getElementById('team-label');
+  if (s.myTeam) {
+    roleEl.textContent = s.myTeam.role.toUpperCase();
+    roleEl.className = 'role-badge ' + s.myTeam.role;
+    teamEl.textContent = 'Team ' + s.myTeam.number;
+    { const rt=(s.teams||[]).filter(t=>t.role==='runner'), left=rt.filter(t=>t.status==='active').length;
+      document.getElementById('role-info').textContent = s.myTeam.role === 'tagger' ? `Hunt: ${left}/${rt.length} runners left` : `Tagger: Team ${(s.teams||[]).find(t=>t.role==='tagger')?.number ?? '—'} · ${left} left`; }
+  }
+  updateZoneWarning(s);
+  const gpsEl=document.getElementById('gps-status');
+  if(gpsEl){ const age=s.me.lastLocationAt ? s.now-s.me.lastLocationAt : Infinity; gpsEl.textContent = age>30000 ? 'GPS: stale' : s.me.accuracyMeters ? `GPS: ±${Math.round(s.me.accuracyMeters)}m` : 'GPS: waiting'; }
+
+  // Main timer
+  let timerText = '—';
+  if (s.status === 'head_start' && s.headStartEndsAt) {
+    const left = Math.max(0, Math.ceil((s.headStartEndsAt - s.now)/1000));
+    timerText = `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`;
+  } else if (s.status === 'active' && s.endsAt) {
+    const left = Math.max(0, Math.ceil((s.endsAt - s.now)/1000));
+    timerText = `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`;
+  }
+  document.getElementById('main-timer').textContent = timerText;
+
+  // Next snapshot / location share
+  let snapText = '—';
+  if (s.status === 'active' && s.nextSnapshotAt) {
+    const left = Math.max(0, Math.ceil((s.nextSnapshotAt - s.now)/1000));
+    snapText = `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`;
+  } else if (s.status === 'head_start') {
+    snapText = 'Waiting';
+  }
+  document.getElementById('snap-timer').textContent = snapText;
+
+  // Team panel content
+  let teamHtml = '';
+  if (s.myTeam) {
+    if (s.myTeam.role === 'runner' && s.myTeam.secretCode) {
+      teamHtml += `<div style="text-align:center; color:var(--muted); font-size:0.85rem">Secret Team Code</div>`;
+      teamHtml += `<div class="team-code-big">${esc(s.myTeam.secretCode)}</div>`;
+    } else if (s.myTeam.role === 'tagger') {
+      teamHtml += `<div style="text-align:center; color:var(--muted); font-size:0.85rem">Tagger teams do not have a secret Team Code.</div>`;
+    }
+    if (s.myTeam.hasExtraHealth) teamHtml += `<div style="text-align:center; margin-bottom:12px">❤️ Extra Health Active</div>`;
+    if ((s.myTeam.ghostCharges||0)>0) teamHtml += `<div style="text-align:center; margin-bottom:12px">👻 Ghost charges: ${s.myTeam.ghostCharges}</div>`;
+    if ((s.myTeam.smokeCharges||0)>0) teamHtml += `<div style="text-align:center; margin-bottom:12px">💨 Smoke: ${s.myTeam.smokeCharges}</div>`;
+    if ((s.myTeam.visionCharges||0)>0) teamHtml += `<div style="text-align:center; margin-bottom:12px">👁️ Vision: ${s.myTeam.visionCharges}</div>`;
+    if ((s.myTeam.snapshotCharges||0)>0) teamHtml += `<div style="text-align:center; margin-bottom:12px">📸 Bonus snap: ${s.myTeam.snapshotCharges}</div>`;
+    if (s.myTeam.isGhostMode) teamHtml += `<div style="text-align:center; margin-bottom:12px">👻 Ghost/Smoke ACTIVE</div>`;
+    if (s.isSpectator) teamHtml += `<div style="text-align:center; margin-bottom:12px;color:var(--warning)">👁 SPECTATOR MODE</div>`;
+    if (s.myTeam.penaltyUntil && s.now < s.myTeam.penaltyUntil) {
+      const left = Math.ceil((s.myTeam.penaltyUntil - s.now)/1000);
+      teamHtml += `<div style="text-align:center; color:var(--danger)">⛔ Penalty ${left}s</div>`;
+    }
+    teamHtml += `<div style="margin-top:16px; font-size:0.85rem; color:var(--muted)">Only share this code when you are physically tagged.</div>`;
+  }
+  teamHtml += `<div style="margin-top:14px">${teamsHtml(s, s.myTeam?s.myTeam.number:-1)}</div><button class="secondary" style="width:100%;margin-top:10px" onclick="closePanels();openTeams()">View all teams</button>`;
+  document.getElementById('panel-team-body').innerHTML = teamHtml;
+
+  // Quests
+  let questHtml = '';
+  if (s.quests && s.quests.length) {
+    s.quests.forEach(q => {
+      let extra = '';
+      if (q.status === 'active' && q.type === 'distance') {
+        const pct = Math.min(100, (q.distanceTravelled / q.distanceRequired)*100);
+        extra = `<div style="font-size:0.8rem; color:var(--muted)">${q.distanceTravelled}/${q.distanceRequired}m</div>
+                 <div class="progress"><div style="width:${pct}%"></div></div>`;
+      }
+      if (q.status === 'active' && q.type === 'hold') {
+        extra = `<div class="progress"><div style="width:${q.holdProgress}%"></div></div>`;
+      }
+      questHtml += `<div class="quest-card ${q.status}">
+        <div style="display:flex; justify-content:space-between">
+          <strong>${esc(q.title)}</strong>${q.isBait?' <span class="risky">⚠ RISKY</span>':''}
+          <span class="badge ${q.status==='completed'?'ready':q.status==='active'?'tagger':'wait'}">${q.status}</span>
+        </div>
+        <div style="font-size:0.85rem; color:var(--muted); margin:6px 0">${q.description}</div>
+        <div style="font-size:0.8rem">Reward: ${({extra_health:'❤️ Extra Health',ghost_mode:'👻 Ghost Mode',smoke:'💨 Smoke',vision_burst:'👁️ Vision Burst',vision_burst_x2:'👁️👁️ DOUBLE Vision Burst',bonus_snapshot:'📸 Bonus Snapshot'}[q.reward]||q.reward)}</div>
+        ${q.isBait&&q.status==='available'&&q.expiresIn!=null?`<div style="font-size:.8rem;color:#ffb347">Drop disappears in ${mmss(q.expiresIn)}</div>`:''}
+        ${extra}
+        ${q.status==='available' ? `<button style="margin-top:10px" onclick="activateQuest('${q.id}')">Start Quest</button>` : ''}
+      </div>`;
+    });
+  } else questHtml = '<div style="color:var(--muted)">No quests right now</div>';
+  document.getElementById('panel-quests-body').innerHTML = questHtml;
+
+  // Actions panel: do not rebuild the Tagger code input on every poll.
+  // Replacing the input DOM node every 1.5s causes Android/mobile keyboards to close
+  // and focus to be lost. Rebuild only when the action set actually changes.
+  const actionSignature = JSON.stringify({role:s.myTeam?.role||null,ghostCharges:s.myTeam?.ghostCharges||0,isHost:!!s.isHost});
+  const actionsBody=document.getElementById('panel-actions-body');
+  if(actionsBody && S.actionsSignature !== actionSignature){
+    let actHtml = '';
+    if (s.myTeam && s.myTeam.role === 'tagger') {
+      actHtml += `<div style="margin-bottom:12px"><label for="tag-code">Enter Runner Team Code to Tag</label>
+        <input id="tag-code" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" placeholder="3-character team code" maxlength="6" style="text-align:center; letter-spacing:6px; font-size:1.3rem; font-weight:700"/>
+        <button class="danger" type="button" style="background:linear-gradient(135deg,#ef4444,#dc2626)" onclick="doTag()">TAG TEAM</button>
+        <div id="tag-result" style="margin-top:8px; color:var(--muted)"></div></div>`;
+    }
+    if (s.myTeam && s.myTeam.role === 'runner') {
+      if ((s.myTeam.ghostCharges||0)>0) actHtml += `<button onclick="doGhost()" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed)">👻 Ghost Mode (${s.myTeam.ghostCharges})</button>`;
+      if ((s.myTeam.smokeCharges||0)>0) actHtml += `<button onclick="doSmoke()" style="background:linear-gradient(135deg,#64748b,#475569)">💨 Smoke (${s.myTeam.smokeCharges})</button>`;
+      if ((s.myTeam.visionCharges||0)>0) actHtml += `<button onclick="doVision()" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">👁️ Vision Burst (${s.myTeam.visionCharges})</button>`;
+      if (s.myTeam.role==='tagger') {
+        actHtml += `<button onclick="doPing()" style="background:linear-gradient(135deg,#f97316,#ea580c)">📡 Ping nearest Runner</button>`;
+        if ((s.myTeam.snapshotCharges||0)>0) actHtml += `<button onclick="doBonusSnap()" style="background:linear-gradient(135deg,#eab308,#ca8a04)">📸 Bonus Snapshot (${s.myTeam.snapshotCharges})</button>`;
+      }
+    }
+    actHtml += `<button class="secondary" onclick="toggleGPS()" id="gps-btn" style="margin-top:10px">Enable GPS</button>`;
+    actHtml += `<button class="secondary" onclick="centerOnMe()" style="margin-top:8px">Center on Me</button>`;
+    if (s.isHost) actHtml += `<button class="danger" onclick="hostEndGame()" style="margin-top:8px;background:linear-gradient(135deg,#7f1d1d,#991b1b)">End Game</button>`;
+    actionsBody.innerHTML = actHtml;
+    S.actionsSignature=actionSignature;
+  }
+
+  // Chat
+  const chatBox = document.getElementById('chat-messages');
+  if (chatBox) {
+    chatBox.innerHTML = (s.chat || []).map(m =>
+      `<div class="chat-msg"><span class="name">${esc(m.playerName)}:</span> ${esc(m.text)}</div>`
+    ).join('');
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  updateMap(s);
+}
+
+function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function openPanel(name) {
+  closePanels();
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('panel-' + name).classList.add('open');
+}
+function closePanels() {
+  document.getElementById('overlay').classList.remove('show');
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('open'));
+}
+
+// ===== GOOGLE MAP =====
+function setMapStatus(show,title,text){
+  const box=document.getElementById('map-status'); if(!box)return;
+  box.classList.toggle('show',!!show);
+  if(title) document.getElementById('map-status-title').textContent=title;
+  if(text) document.getElementById('map-status-text').textContent=text;
+}
+function initMap(s) {
+  if (S.map) return true;
+  if (!window.google?.maps) {
+    setMapStatus(true,'Map unavailable',window.__mapsLoadFailed?'Google Maps failed to load. Check the Maps API key, billing, or network connection.':'Waiting for Google Maps to load.');
+    return false;
+  }
+  try {
+    const el=document.getElementById('map'); if(!el) throw new Error('Map container missing');
+    S.map = new google.maps.Map(el, {
+      center: { lat: s.centerLat, lng: s.centerLng }, zoom: 14,
+      disableDefaultUI: true, zoomControl: true, mapTypeId:'roadmap', mapTypeControl: false,
+      streetViewControl: false, fullscreenControl: false,
+      styles: [
+        {elementType:'geometry',stylers:[{color:'#23272e'}]},
+        {elementType:'labels.text.fill',stylers:[{color:'#e8e8e8'}]},
+        {elementType:'labels.text.stroke',stylers:[{color:'#101216'},{weight:3}]},
+        {featureType:'poi',stylers:[{visibility:'off'}]},{featureType:'transit',stylers:[{visibility:'off'}]},
+        {featureType:'administrative',elementType:'geometry',stylers:[{visibility:'off'}]},
+        {featureType:'poi.park',elementType:'geometry',stylers:[{visibility:'on'},{color:'#25402b'}]},
+        {featureType:'landscape.man_made',elementType:'geometry',stylers:[{color:'#2d3239'}]},
+        {featureType:'water',elementType:'geometry',stylers:[{color:'#1b3f6b'}]},
+        {featureType:'road',elementType:'geometry.fill',stylers:[{color:'#a9afb8'}]},
+        {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#0f1115'},{weight:1}]},
+        {featureType:'road.arterial',elementType:'geometry.fill',stylers:[{color:'#cfd4db'}]},
+        {featureType:'road.highway',elementType:'geometry.fill',stylers:[{color:'#f5f7fa'}]},
+        {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#ffffff'}]}
+      ]
+    });
+    S.boundaryCircle = new google.maps.Circle({map:S.map,center:{lat:s.centerLat,lng:s.centerLng},radius:s.initialRadiusMeters,strokeColor:'#b36cff',strokeOpacity:.95,strokeWeight:3,fillOpacity:0,clickable:false});
+    S.safeZoneCircle=new google.maps.Circle({map:S.map,strokeColor:'#00e5ff',strokeOpacity:1,strokeWeight:4,fillColor:'#00e5ff',fillOpacity:.05,clickable:false,zIndex:3});
+    S.pendingZoneCircle=new google.maps.Circle({map:S.map,strokeColor:'#7cff3a',strokeOpacity:1,strokeWeight:5,fillColor:'#7cff3a',fillOpacity:.14,clickable:false,zIndex:4});
+    const r=s.initialRadiusMeters; const zoom=r<=750?16:r<=1500?15:r<=3500?13:r<=7000?12:r<=14000?11:10; S.map.setZoom(zoom);
+    setMapStatus(false); return true;
+  } catch(err){ console.error(err); S.map=null; setMapStatus(true,'Map failed to initialize','The map could not be created. Your game state is safe; retry the map without restarting the game.'); return false; }
+}
+function retryMap(){ setMapStatus(false); S.map=null; if(S.last) { initMap(S.last); if(S.map) updateMap(S.last); } }
+function compass(b){return ['N','NE','E','SE','S','SW','W','NW'][Math.round(b/45)%8];}
+function zoneAlert(){
+  try{navigator.vibrate&&navigator.vibrate([300,120,300]);}catch(e){}
+  try{const ac=S.ac; if(ac)[0,.22].forEach((d,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='square';o.frequency.value=i?520:390;g.gain.value=.08;o.connect(g);g.connect(ac.destination);o.start(ac.currentTime+d);o.stop(ac.currentTime+d+.16);});}catch(e){}
+}
+document.addEventListener('pointerdown',()=>{try{S.ac=S.ac||new(window.AudioContext||window.webkitAudioContext)();S.ac.resume();}catch(e){}});
+function updateZoneWarning(s){
+  const box=document.getElementById('zone-warning'); if(!box)return;
+  const z=s.zoneStatus, pz=s.pendingSafeZone, live=s.status==='active'||s.status==='head_start';
+  const show=(cls,t,c,hd,sb)=>{box.className='zone-warning show '+cls;box.innerHTML=`<div class="zt">${t}</div>${c?`<div class="zc">${c}</div>`:''}<div class="zh">${hd}</div><div class="zs">${sb}</div>`;};
+  if(!z||!live){box.className='zone-warning';S.zoneKey=null;return;}
+  if(z.phase==='relocating'&&pz){
+    const key=pz.centerLat+','+pz.centerLng+','+pz.relocEndsAt, fresh=S.zoneKey!==key;
+    if(fresh){S.zoneKey=key;S.zoneMarks={};S.zoneFreshAt=Date.now();}
+    const left=z.secondsLeft, t=`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`, runner=s.myTeam&&s.myTeam.role==='runner';
+    let cls='',hd,sb;
+    if(z.inTarget===true){cls='ok';hd='✅ YOU ARE INSIDE THE NEW SAFE ZONE';sb='Stay inside. You are safe.';}
+    else if(z.inTarget===false){cls='bad';hd='⚠ YOU ARE OUTSIDE - MOVE!';sb=`${z.metersToTarget} m to the ${compass(z.bearing)} (green circle)`+(runner?(z.teamSafe?'<br>A teammate is inside, so your team is safe. Move in anyway.':'<br>Your team is out at 0:00 if nobody is inside.'):'<br>Taggers are not eliminated, but runners will be inside.');}
+    else{hd='WAITING FOR GPS';sb='Turn on location to see if you are inside.';}
+    show(cls+(Date.now()-S.zoneFreshAt<7000?' fresh':''),'SAFE ZONE IS NOW SHRINKING',t,hd,sb);
+    if(fresh)zoneAlert(); else if(cls==='bad')for(const m of [30,10])if(left<=m&&!S.zoneMarks[m]){S.zoneMarks[m]=1;zoneAlert();}
+    return;
+  }
+  if(S.zoneKey){S.zoneKey=null;S.zoneEndAt=Date.now();}
+  if(S.zoneEndAt&&Date.now()-S.zoneEndAt<5000){ if(z.inCurrent===false)show('bad','SAFE ZONE HAS MOVED','','⚠ YOU ARE OUTSIDE IT','Get inside the zone now.'); else show('ok','SAFE ZONE HAS MOVED','','✅ YOU ARE INSIDE','Stay inside the cyan circle.'); return; }
+  if(z.inCurrent===false){show('bad','OUT OF THE SAFE ZONE','','⚠ GET BACK INSIDE','Go to the cyan circle on the map.');return;}
+  box.className='zone-warning';
+}
+function isInsideClient(lat,lng,z){
+  const R=6371000, rad=Math.PI/180, dLat=(z.centerLat-lat)*rad, dLng=(z.centerLng-lng)*rad;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat*rad)*Math.cos(z.centerLat*rad)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)) <= z.radiusMeters;
+}
+
+function updateMap(s) {
+  if (!S.map && !initMap(s)) return;
+  if(S.safeZoneCircle && s.safeZone){
+    S.safeZoneCircle.setCenter({lat:s.safeZone.centerLat,lng:s.safeZone.centerLng});
+    S.safeZoneCircle.setRadius(s.safeZone.radiusMeters);
+    S.safeZoneCircle.setMap(S.map);
+  }
+  if(S.pendingZoneCircle && s.pendingSafeZone){
+    S.pendingZoneCircle.setCenter({lat:s.pendingSafeZone.centerLat,lng:s.pendingSafeZone.centerLng});
+    S.pendingZoneCircle.setRadius(s.pendingSafeZone.radiusMeters);
+    S.pendingZoneCircle.setMap(S.map);
+  } else if(S.pendingZoneCircle){ S.pendingZoneCircle.setMap(null); }
+
+  // Reuse marker objects across state polls so moving players do not get
+  // constantly destroyed/recreated. This keeps the map responsive and avoids
+  // stale marker references during real GPS movement.
+  const liveMarkerKeys=new Set();
+  const keepMarker=(key,create,update)=>{
+    let marker=S.markers[key];
+    if(!marker){ marker=create(); S.markers[key]=marker; }
+    update(marker); liveMarkerKeys.add(key);
+  };
+
+  // Zones
+  (s.zones || []).forEach(z => {
+    const color = z.type === 'danger' ? '#ff3b3b' : '#ffd400';
+    keepMarker('z'+z.id,()=>new google.maps.Circle({map:S.map,strokeColor:color,strokeOpacity:1,strokeWeight:3,fillColor:color,fillOpacity:.25,zIndex:6}),m=>{
+      m.setCenter({lat:z.centerLat,lng:z.centerLng}); m.setRadius(z.radiusMeters); m.setMap(S.map);
+    });
+  });
+
+  // Quest targets
+  (s.quests || []).forEach(q => {
+    if (q.status === 'completed' || q.status === 'failed') return;
+    const qKey='q'+q.id;
+    keepMarker(qKey,()=>{
+      const qColor=q.isBait?'#f97316':q.reward==='extra_health'?'#ef4444':q.reward==='smoke'?'#94a3b8':q.reward==='vision_burst'?'#06b6d4':q.reward==='bonus_snapshot'?'#eab308':'#3b82f6';
+      const marker=new google.maps.Marker({map:S.map,label:{text:q.isBait?'!':'Q',color:'#fff',fontWeight:'900'},icon:{path:SQ,scale:14,fillColor:qColor,fillOpacity:.95,strokeColor:'#fff',strokeWeight:2}});
+      marker.addListener('click',()=>{
+        const info=new google.maps.InfoWindow({content:`<div style="min-width:180px;color:#111"><strong>QUEST</strong><div style="margin-top:6px"><b>${esc(q.title)}</b></div><div style="margin-top:4px">${esc(q.description)}</div>${q.isBait?'<div style="color:#c2410c;font-weight:700;margin-top:4px">⚠ RISKY - bigger reward</div>':''}</div>`});
+        info.open({map:S.map,anchor:marker});
+      });
+      return marker;
+    },m=>{m.setPosition({lat:q.targetLat,lng:q.targetLng});m.setTitle('Quest: '+q.title);m.setMap(S.map);});
+  });
+
+  // Locations
+  (s.visibleLocations || []).forEach((loc, i) => {
+    if (loc.playerId && loc.playerId === S.playerId) return; // my own square is drawn from my live GPS
+    let color = loc.teamColor || '#22c55e';
+    if (loc.isDanger) color = '#ef4444';
+    else if (loc.isSnapshot) color = '#f97316';
+    const label = loc.isSnapshot ? `T${loc.teamNumber||'?'}` : `${TEAM_LETTER(loc.teamNumber||1)}${loc.playerIndex||''}`;
+    const locKey='l'+(loc.playerId || `${loc.teamId||'x'}-${i}`);
+    keepMarker(locKey,()=>{const mk=new google.maps.Marker({map:S.map});mk.addListener('click',()=>showMarkerInfo(mk,mk._html||''));return mk;},m=>{
+      m._html=markerInfoHtml(s,loc,label);
+      m.setPosition({lat:loc.lat,lng:loc.lng});
+      m.setLabel({text:label,color:'#fff',fontSize:loc.isSnapshot?'10px':'9px',fontWeight:'800'});
+      m.setIcon({path:SQ,scale:loc.isSnapshot?13:11,fillColor:color,fillOpacity:.95,strokeColor:'#111',strokeWeight:3});
+      m.setTitle(loc.name || label); m.setOpacity(loc.isLive===false?.45:1); m.setMap(S.map);
+    });
+  });
+
+  Object.keys(S.markers).forEach(key=>{
+    if(!liveMarkerKeys.has(key)){ S.markers[key].setMap(null); delete S.markers[key]; }
+  });
+
+
+  // Previous snapshot trail (ghost rings) until next update
+  if (s.previousSnapshot && s.previousSnapshot.positions) {
+    s.previousSnapshot.positions.forEach((pos, i) => {
+      const key = 'trail_'+i;
+      keepMarker(key, () => new google.maps.Marker({map:S.map}), m => {
+        m.setPosition({lat:pos.lat, lng:pos.lng});
+        m.setIcon({path:google.maps.SymbolPath.CIRCLE, scale:14, fillColor:'#f97316', fillOpacity:0.2, strokeColor:'#f97316', strokeOpacity:0.45, strokeWeight:2});
+        m.setTitle('Previous snap T'+(pos.teamNumber||'?'));
+        m.setZIndex(2);
+      });
+    });
+  }
+
+  // My position + GPS accuracy
+  if (s.me.hasFix && !(S.gpsFix&&Date.now()-S.gpsFix.at<30000) && Number.isFinite(s.me.lat) && Number.isFinite(s.me.lng)) {
+    if(!S.myMarker) S.myMarker=new google.maps.Marker({map:S.map,zIndex:999,title:'You'});
+    S.myMarker.setPosition({lat:s.me.lat,lng:s.me.lng});
+    S.myMarker.setIcon({path:SQ,scale:11,fillColor:'#22c55e',fillOpacity:1,strokeColor:'#fff',strokeWeight:3});
+    if(!S.accuracyCircle) S.accuracyCircle=new google.maps.Circle({map:S.map,strokeColor:'#22d3ee',strokeOpacity:.5,strokeWeight:1,fillColor:'#22d3ee',fillOpacity:.08});
+    if(Number.isFinite(s.me.accuracyMeters)){S.accuracyCircle.setCenter({lat:s.me.lat,lng:s.me.lng});S.accuracyCircle.setRadius(Math.min(300,s.me.accuracyMeters));}
+  }
+}
+
+
+function centerOnMe() {
+  if (S.last && Number.isFinite(S.last.me?.lat) && Number.isFinite(S.last.me?.lng)) S.map.panTo({ lat: S.last.me.lat, lng: S.last.me.lng });
+}
+
+let penaltyFlashTimer = null;
+function showPenaltyFlash() {
+  const el=document.getElementById('penalty-flash');
+  if(!el) return;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(penaltyFlashTimer);
+  penaltyFlashTimer=setTimeout(()=>el.classList.remove('show'),1800);
+  if(navigator.vibrate) navigator.vibrate([120,70,120]);
+}
+
+async function chooseTeammate(teammateId) {
+  try {
+    await api('/api/team-choice', { gameId:S.gameId, teammateId: teammateId || null });
+    fetchState();
+  } catch(e) { alert(e.message); }
+}
+
+async function toggleReady() {
+  if (!S.last) return;
+  try { await api('/api/ready', { gameId: S.gameId, playerId: S.playerId, ready: !S.last.me.isReady }); }
+  catch(e) { alert(e.message); }
+}
+async function startGame() {
+  try { await api('/api/start', { gameId: S.gameId, playerId: S.playerId }); }
+  catch(e) { alert(e.message); }
+}
+async function doTag() {
+  const code = document.getElementById('tag-code')?.value?.trim();
+  if (!code) return alert('Enter code');
+  try {
+    const res = await api('/api/tag', { gameId: S.gameId, playerId: S.playerId, code });
+    const el = document.getElementById('tag-result');
+    if (el) el.textContent = res.message || res.result;
+  } catch(e) {
+    const el = document.getElementById('tag-result');
+    if (el) el.textContent = e.message;
+  }
+}
+async function activateQuest(id) {
+  try { await api('/api/quest/activate', { gameId: S.gameId, playerId: S.playerId, questId: id }); }
+  catch(e) { alert(e.message); }
+}
+async function doGhost() {
+  try { await api('/api/ghost', { gameId: S.gameId, playerId: S.playerId }); closePanels(); }
+  catch(e) { alert(e.message); }
+}
+async function doSmoke() {
+  try { await api('/api/smoke', { gameId: S.gameId, playerId: S.playerId }); closePanels(); }
+  catch(e) { alert(e.message); }
+}
+async function doVision() {
+  try { await api('/api/vision', { gameId: S.gameId, playerId: S.playerId }); closePanels(); }
+  catch(e) { alert(e.message); }
+}
+async function doPing() {
+  try {
+    const res = await api('/api/ping', { gameId: S.gameId, playerId: S.playerId });
+    if(res.ping) alert(`${res.message}\nBearing ~${res.ping.bearing}°`);
+    else alert(res.message||'Ping done');
+  } catch(e) { alert(e.message); }
+}
+async function doBonusSnap() {
+  try { await api('/api/bonus-snapshot', { gameId: S.gameId, playerId: S.playerId }); closePanels(); }
+  catch(e) { alert(e.message); }
+}
+async function hostEndGame(){
+  if(!confirm('End this game for everyone?')) return;
+  try{ await api('/api/end',{gameId:S.gameId,playerId:S.playerId}); }catch(e){alert(e.message);}
+}
+async function sendChat() {
+  const inp = document.getElementById('chat-input');
+  if (!inp || !inp.value.trim()) return;
+  try {
+    await api('/api/chat', { gameId: S.gameId, playerId: S.playerId, text: inp.value.trim() });
+    inp.value = '';
+  } catch(e) {}
+}
+
+show('home');
+
+/* ===== v2: Minecraft portals, precise GPS, rejoin ===== */
+const SQ='M -1 -1 L 1 -1 L 1 1 L -1 1 z';
+const meIcon={path:SQ,scale:10,fillColor:'#5dd13a',fillOpacity:1,strokeColor:'#111',strokeWeight:3};
+function portal(kind){
+  const el=document.getElementById('mc-portal'); if(!el)return;
+  const cv=el.querySelector('canvas'),cx=cv.getContext('2d');
+  const W=cv.width=Math.ceil(innerWidth/9),H=cv.height=Math.ceil(innerHeight/9);
+  const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+  const dur=reduce?350:(kind==='nether'?2000:1100),t0=performance.now();
+  el.className='show '+kind; el.style.opacity=1;
+  el.querySelector('b').textContent=kind==='nether'?'Entering the Nether...':'Entering the End...';
+  const img=cx.createImageData(W,H),d=img.data;
+  (function f(t){
+    const k=t-t0; if(k>=dur){el.className='';return;}
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=(y*W+x)*4; let r,g,b;
+      if(kind==='nether'){
+        const v=(Math.sin(x*.45+k*.006)+Math.sin(y*.38-k*.005)+Math.sin((x+y)*.25+k*.004)+Math.sin(Math.hypot(x-W/2,y-H/2)*.5-k*.008)+4)/8;
+        r=(40+v*170)|0;g=(v*50)|0;b=(90+v*165)|0;
+        if(((x*73856093)^(y*19349663)^((k/90)|0))%53===0){r=255;g=190;b=255;}
+      }else{
+        const s=Math.sin(x*.3+k*.002)*Math.sin(y*.3-k*.0015),p=s>0?s:0;
+        r=4;g=(14+p*28)|0;b=(16+p*22)|0;
+        const h=(((x+((k*.012)|0))*73856093)^(y*19349663))>>>0;
+        if(h%61===0){r=150;g=255;b=220;}else if(h%37===0){r=40;g=150;b=120;}
+      }
+      d[i]=r;d[i+1]=g;d[i+2]=b;d[i+3]=255;
+    }
+    cx.putImageData(img,0,0);
+    el.style.opacity=k>dur-250?(dur-k)/250:1;
+    requestAnimationFrame(f);
+  })(t0);
+}
+// every screen change = End portal; lobby -> game = Nether portal
+let curScr='home'; const _show=show;
+show=function(id){ if(id!==curScr){ const k=(curScr==='lobby'&&id==='game')?'nether':'end'; curScr=id; portal(k); } _show(id); };
+playPortalTransition=function(done){ if(done)done(); };
+// remember the game so a page refresh does not kick the player out
+function saveSess(){try{localStorage.setItem('irlSess',JSON.stringify({g:S.gameId,p:S.playerId,t:S.sessionToken,n:S.playerName,h:!!S.isHost}));}catch(e){}}
+function clearSess(){try{localStorage.removeItem('irlSess');}catch(e){}}
+const _sp=startPoll; startPoll=function(){saveSess();_sp();};
+const _render=render; render=function(s){
+  if(s.status==='ended')clearSess();
+  _render(s);
+  if(s.status!=='lobby'&&s.status!=='ended'&&!roleRevealShown) setTimeout(()=>showRoleReveal(s),1900);
+};
+// ---- GPS ----
+function gpsMsg(t){const g=document.getElementById('gps-status');if(g)g.textContent=t;}
+function stopGPS(){ if(S.gpsWatch!=null&&navigator.geolocation)navigator.geolocation.clearWatch(S.gpsWatch); S.gpsWatch=null; clearInterval(S.gpsKeep); }
+async function keepAwake(){try{if('wakeLock' in navigator&&!S.wl){S.wl=await navigator.wakeLock.request('screen');S.wl.addEventListener('release',()=>{S.wl=null;});}}catch(e){}}
+function startGPSWatch(){
+  if(S.gpsWatch||!navigator.geolocation)return;
+  const btn=document.getElementById('gps-btn'); if(btn)btn.textContent='Getting GPS...';
+  const ok=pos=>{
+    const c=pos.coords,acc=Number(c.accuracy);
+    if(!Number.isFinite(c.latitude)||!Number.isFinite(c.longitude))return;
+    S.gpsFix={lat:c.latitude,lng:c.longitude,acc:Number.isFinite(acc)?acc:50,ts:Number(pos.timestamp)||Date.now(),at:Date.now(),real:Date.now()};
+    if(btn)btn.textContent='GPS On';
+    gpsMsg(`GPS ±${Math.round(S.gpsFix.acc)}m`+(S.gpsFix.acc>60?' (weak - go outside)':''));
+    drawMe(false); pushFix();
+  };
+  const bad=err=>{
+    if(btn)btn.textContent='Enable GPS';
+    if(err.code===1){gpsMsg('GPS blocked: allow Location for this site');return;}
+    gpsMsg(err.code===3?'GPS timeout, retrying...':'GPS: '+err.message); stopGPS(); setTimeout(startGPSWatch,2500);
+  };
+  S.gpsOk=ok;
+  navigator.geolocation.getCurrentPosition(ok,()=>{},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  S.gpsWatch=navigator.geolocation.watchPosition(ok,bad,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  S.gpsKeep=setInterval(()=>{
+    const f=S.gpsFix; if(!f)return; const age=Date.now()-(f.real||f.at);
+    if(age<90000){ f.at=Date.now(); f.ts=f.at; pushFix(); if(age>12000&&S.gpsOk)navigator.geolocation.getCurrentPosition(S.gpsOk,()=>{},{enableHighAccuracy:true,maximumAge:0,timeout:10000}); if(age>25000)gpsMsg(`GPS ±${Math.round(f.acc)}m (steady)`); }
+    else gpsMsg('GPS paused - keep this screen on and open');
+  },4000);
+  keepAwake();
+}
+function pushFix(){const f=S.gpsFix; if(f&&S.gameId)moveTo(f.lat,f.lng,f.acc);}
+moveTo=async function(lat,lng,acc){
+  const f=S.gpsFix,age=f?Date.now()-f.at+Math.min(5000,Math.max(0,f.at-f.ts)):0;
+  try{ await api('/api/location',{gameId:S.gameId,playerId:S.playerId,latitude:+lat,longitude:+lng,accuracyMeters:+acc,sampleAgeMs:age}); }
+  catch(e){ if(e.code==='MOVEMENT_PENALTY'||e.message==='MOVEMENT_PENALTY')showPenaltyFlash(); else gpsMsg('GPS rejected: '+e.message); }
+};
+toggleGPS=function(){ const btn=document.getElementById('gps-btn'); if(S.gpsWatch!=null){stopGPS();if(btn)btn.textContent='Enable GPS';return;} startGPSWatch(); };
+function drawMe(forceCenter){
+  const f=S.gpsFix; if(!f||!S.map||!window.google?.maps)return;
+  const ll={lat:f.lat,lng:f.lng};
+  if(!S.myMarker){S.myMarker=new google.maps.Marker({map:S.map,zIndex:999,title:'You'});S.myMarker.addListener('click',()=>{const t=S.last&&S.last.myTeam;showMarkerInfo(S.myMarker,`<b>${esc(S.playerName||'You')}</b> (you)${t?'<br>Team '+t.number+' - '+(t.role==='tagger'?'Tagger':'Runner'):''}`);});}
+  S.myMarker.setPosition(ll); S.myMarker.setIcon(meIcon);
+  if(!S.accuracyCircle)S.accuracyCircle=new google.maps.Circle({map:S.map,strokeColor:'#5dd13a',strokeOpacity:.6,strokeWeight:1,fillColor:'#5dd13a',fillOpacity:.1,clickable:false});
+  S.accuracyCircle.setCenter(ll); S.accuracyCircle.setRadius(Math.min(300,f.acc||30));
+  if(!S.didFirstCenter||forceCenter){S.didFirstCenter=true;S.follow=true;S.map.setZoom(17);S.map.panTo(ll);}
+  else if(S.follow!==false)S.map.panTo(ll);
+}
+centerOnMe=function(){ S.follow=true; if(S.gpsFix)drawMe(true); else if(S.last&&S.last.me?.hasFix)S.map.panTo({lat:S.last.me.lat,lng:S.last.me.lng}); };
+const _initMap=initMap; initMap=function(s){ if(!S.map){S.shade=null;S.shadeKey=null;} const r=_initMap(s); if(r&&S.map&&!S._drag){S._drag=1;S.map.addListener('dragstart',()=>{S.follow=false;});drawMe(false);} return r; };
+const _renderLobby=renderLobby; renderLobby=function(s){ _renderLobby(s); if(S.gpsWatch==null&&navigator.geolocation)startGPSWatch(); };
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&S.gameId){ keepAwake(); if(S.gpsWatch!=null){stopGPS();startGPSWatch();} fetchState(); } });
+(async()=>{ try{
+  const x=JSON.parse(localStorage.getItem('irlSess')||'null'); if(!x||!x.g)return;
+  Object.assign(S,{gameId:x.g,playerId:x.p,sessionToken:x.t,playerName:x.n,isHost:x.h});
+  const s=await api(`/api/state?gameId=${x.g}&playerId=${x.p}&sessionToken=${encodeURIComponent(x.t||'')}`);
+  if(s.status==='ended'){clearSess();S.gameId=S.playerId=null;return;}
+  S.last=s; startPoll();
+}catch(e){clearSess();S.gameId=S.playerId=null;} })();
+
+function zoneRing(lat,lng,r,n){const a=[],k=111320*Math.cos(lat*Math.PI/180);for(let i=0;i<n;i++){const t=2*Math.PI*i/n;a.push({lat:lat+r*Math.cos(t)/111320,lng:lng+r*Math.sin(t)/k});}return a;}
+function updateShade(s){
+  if(!S.map||!window.google)return; const z=s.pendingSafeZone||s.safeZone; if(!z)return;
+  const key=[z.centerLat,z.centerLng,z.radiusMeters,s.initialRadiusMeters].join(); if(S.shadeKey===key&&S.shade)return; S.shadeKey=key;
+  const R=s.initialRadiusMeters*3+3000,k=111320*Math.cos(s.centerLat*Math.PI/180),dA=R/111320,dO=R/k,c=s;
+  const outer=[{lat:c.centerLat+dA,lng:c.centerLng-dO},{lat:c.centerLat+dA,lng:c.centerLng+dO},{lat:c.centerLat-dA,lng:c.centerLng+dO},{lat:c.centerLat-dA,lng:c.centerLng-dO}];
+  const hole=zoneRing(z.centerLat,z.centerLng,z.radiusMeters,120).reverse();
+  if(!S.shade)S.shade=new google.maps.Polygon({map:S.map,fillColor:'#ff2a2a',fillOpacity:.3,strokeWeight:0,clickable:false,zIndex:1});
+  S.shade.setPaths([outer,hole]);
+}
+const _um=updateMap; updateMap=function(s){ _um(s); try{updateShade(s);}catch(e){console.error(e);} };
+
+/* ===== V2.3: custom teams, teams drawer, tap a marker for the name ===== */
+const TEAM_LETTER=n=>n<=26?String.fromCharCode(64+n):String(n);
+function toggleCustomTeams(){
+  const c=document.getElementById('create-team-size').value==='custom';
+  document.getElementById('custom-team-box').style.display=c?'block':'none';
+  const f=document.getElementById('create-team-formation'); f.style.display=c?'none':'';
+  if(f.previousElementSibling&&f.previousElementSibling.tagName==='LABEL')f.previousElementSibling.style.display=c?'none':'';
+}
+function teamMembers(s,n){return (s.players||[]).filter(p=>p.teamNumber===n).sort((a,b)=>(a.playerIndex||0)-(b.playerIndex||0));}
+function teamsHtml(s,only){
+  const mine=s.myTeam?s.myTeam.number:-1;
+  let teams=(s.teams||[]).slice().sort((a,b)=>(a.role==='tagger'?-1:0)-(b.role==='tagger'?-1:0)||((b.number===mine)-(a.number===mine))||a.number-b.number);
+  const runners=teams.filter(t=>t.role==='runner'), alive=runners.filter(t=>t.status==='active').length;
+  let h=only?'':`<div class="td-sum">${teams.length} team${teams.length===1?'':'s'} · ${runners.length} runner team${runners.length===1?'':'s'} · ${alive} still in</div>`;
+  if(only) teams=teams.filter(t=>t.number===only);
+  for(const t of teams){
+    const me=t.number===mine, L=TEAM_LETTER(t.number), dead=t.status!=='active', col=esc(t.color||'#555');
+    h+=`<div class="td-team ${t.role}${me?' me':''}${dead?' dead':''}"><div class="td-th"><span class="td-chip" style="background:${col}">${L}</span><span>TEAM ${t.number}${me?' (YOU)':''}</span><span class="td-role ${t.role}">${t.role==='tagger'?'TAGGER':'RUNNER'}</span></div>`;
+    if(dead)h+='<div class="td-hint">ELIMINATED</div>';
+    for(const p of teamMembers(s,t.number))h+=`<div class="td-row"><span class="td-chip" style="background:${col}">${L}${p.playerIndex||''}</span><span class="td-name">${esc(p.name)}${p.isMe?' (you)':''}</span><span class="td-dot ${p.isOnline?'on':'off'}"></span></div>`;
+    h+='</div>';
+  }
+  return h+(only?'':'<div class="td-hint">Map markers show the team letter + player number. Example: D1 = Team 4, player 1.</div>');
+}
+function openTeams(){ if(!S.last||!S.last.myTeam)return; try{closePanels();}catch(e){} document.getElementById('teams-body').innerHTML=teamsHtml(S.last); document.getElementById('teams-drawer').classList.add('open'); document.getElementById('teams-scrim').classList.add('show'); }
+function closeTeams(){ document.getElementById('teams-drawer').classList.remove('open'); document.getElementById('teams-scrim').classList.remove('show'); }
+function showMarkerInfo(mk,html){ try{ if(S.infoWin)S.infoWin.close(); S.infoWin=new google.maps.InfoWindow({content:`<div style="color:#111;min-width:150px;font-size:14px;line-height:1.35">${html}</div>`}); S.infoWin.open({map:S.map,anchor:mk}); }catch(e){} }
+function markerInfoHtml(s,loc,label){
+  const tn=loc.teamNumber, mem=tn?teamMembers(s,tn):[];
+  if(loc.isSnapshot) return `<b>Team ${tn} (${TEAM_LETTER(tn)})</b><br>${mem.map(p=>esc(p.name)).join(', ')||'Runner team'}<br><i>Last snapshot position - not live</i>`;
+  const st=loc.isLive===false?`stale (${loc.ageSeconds||'?'}s old)`:'live';
+  return `<b>${esc(loc.name||'Player')}</b><br>Team ${tn} · ${esc(label)}${loc.isDanger?'<br>In a danger zone':''}<br>${st}`;
+}
+const _render3=render; render=function(s){ _render3(s); const d=document.getElementById('teams-drawer'); if(d&&d.classList.contains('open')&&s.myTeam)document.getElementById('teams-body').innerHTML=teamsHtml(s); };
+
+/* ===== V2.4: clean game screen, alerts, reconnect, lobby kick/leave ===== */
+function mmss(sec){sec=Math.max(0,Math.ceil(sec));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');}
+function distM(a,b,c,d){const r=Math.PI/180,x=(c-a)*r,y=(d-b)*r,k=Math.sin(x/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)**2;return 12742000*Math.asin(Math.sqrt(k));}
+function bearingTo(a,b,c,d){const r=Math.PI/180,dl=(d-b)*r,y=Math.sin(dl)*Math.cos(c*r),x=Math.cos(a*r)*Math.sin(c*r)-Math.sin(a*r)*Math.cos(c*r)*Math.cos(dl);return (Math.atan2(y,x)/r+360)%360;}
+function toast(msg,kind){const box=document.getElementById('toasts');if(!box)return;const d=document.createElement('div');d.className='toast '+(kind||'info');d.textContent=msg;box.appendChild(d);while(box.children.length>3)box.removeChild(box.firstChild);setTimeout(()=>d.remove(),4200);try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}}
+function setConn(ok){const c=document.getElementById('chip-conn');if(c)c.style.display=ok?'none':'';}
+function endSession(msg){clearSess();try{stopGPS();}catch(e){}alert(msg||'Session ended.');location.reload();}
+async function kickPlayer(id){if(!confirm('Remove this player from the lobby?'))return;try{await api('/api/kick',{gameId:S.gameId,playerId:S.playerId,targetId:id});fetchState();}catch(e){alert(e.message);}}
+async function leaveLobby(){if(!confirm('Leave this lobby?'))return;try{await api('/api/leave',{gameId:S.gameId,playerId:S.playerId});}catch(e){}clearSess();location.reload();}
+function toggleLegend(){document.getElementById('legend').classList.toggle('show');}
+function openTag(){openPanel('actions');setTimeout(()=>{const i=document.getElementById('tag-code');if(i)i.focus();},350);}
+function showOut(s){const o=document.getElementById('out-overlay');if(o){o.classList.add('show');setTimeout(()=>o.classList.remove('show'),7000);}}
+function refineHud(s){const t=s.myTeam;if(!t)return;const tc=document.getElementById('timer-cap'),sc=document.getElementById('snap-cap');
+  if(tc)tc.textContent=s.status==='head_start'?'HEAD START':'TIME LEFT';
+  if(sc)sc.textContent=t.role==='tagger'?'📸 SNAPSHOT':'👁 REVEAL';}
+function renderStrip(s){
+  const t=s.myTeam;if(!t)return;const set=(id,txt,cls)=>{const e=document.getElementById(id);if(!e)return;e.textContent=txt;e.className='chip '+(cls||'');e.style.display=txt?'':'none';};
+  const z=s.zoneStatus||{},out=t.status!=='active';
+  if(out)set('chip-phase','☠ OUT - spectating','bad');
+  else if(s.status==='head_start'){const left=(s.headStartEndsAt-s.now)/1000;set('chip-phase',t.role==='tagger'?'⏳ WAIT '+mmss(left):'🏃 HEAD START '+mmss(left),'warn');}
+  else set('chip-phase','','');
+  let zt='',zc='';
+  if(z.phase==='relocating'){zt=(z.inTarget===true?'✅ SAFE':z.inTarget===false?'⚠ OUTSIDE':'📍 MOVING')+' '+mmss(z.secondsLeft);zc=z.inTarget===false?'bad':z.inTarget===true?'ok':'warn';}
+  else if(z.inCurrent===false){zt='⚠ OUT OF ZONE';zc='bad';}
+  else if(z.inCurrent===true){zt='✅ SAFE'+(s.nextShrinkAt&&s.status==='active'?' · shrink '+mmss((s.nextShrinkAt-s.now)/1000):' ZONE');zc='ok';}
+  set('chip-zone',zt,zc);
+  const cs=document.getElementById('chip-snap');if(cs)cs.style.display=(s.status==='active'&&!out)?'':'none';
+  const pen=(t.penaltyUntil||0)-s.now;set('chip-pen',pen>0?'⛔ STOP '+mmss(pen/1000):'','bad');
+  const st=document.getElementById('status-strip');if(st){st.classList.remove('tight');if(st.scrollHeight>66)st.classList.add('tight');}
+}
+const RAIL={ghost:['Use Ghost Mode now? Other runners will not see you for a while.',()=>doGhost()],smoke:['Use Smoke now?',()=>doSmoke()],vision:['Use Vision Burst now?',()=>doVision()],snap:['Use your Bonus Snapshot now?',()=>doBonusSnap()],ping:['Ping the nearest runner now?',()=>doPing()]};
+function railUse(k){const r=RAIL[k];if(r&&confirm(r[0]))r[1]();}
+function renderRail(s){
+  const el=document.getElementById('powerup-rail'),t=s.myTeam;if(!el)return;
+  if(!t||t.status!=='active'){el.innerHTML='';el.dataset.sig='';return;}
+  const now=s.now,L=[];
+  if(t.hasExtraHealth)L.push(['❤','Extra Health','',null,'']);
+  if(t.isGhostMode)L.push(['👻','Ghost Mode on',mmss((t.ghostUntil-now)/1000),null,'on']);
+  if((t.ghostCharges||0)>0)L.push(['👻','Ghost Mode',t.ghostCharges,'ghost','']);
+  if((t.smokeCharges||0)>0)L.push(['💨','Smoke',t.smokeCharges,'smoke','']);
+  if((t.visionCharges||0)>0)L.push(['👁','Vision Burst',t.visionCharges,'vision','']);
+  if(t.role==='tagger'&&(t.snapshotCharges||0)>0)L.push(['📸','Bonus Snapshot',t.snapshotCharges,'snap','']);
+  if(t.role==='tagger'&&(t.pingCharges||0)>0){const cd=(t.pingCooldownUntil||0)-now;L.push(['📡','Ping nearest runner',cd>0?mmss(cd/1000):t.pingCharges,cd>0?null:'ping',cd>0?'cd':'']);}
+  if(t.hunterVisionUntil>now)L.push(['👁','Seeing the Tagger live',mmss((t.hunterVisionUntil-now)/1000),null,'on']);
+  if(t.runnerVisionUntil>now)L.push(['👁','Seeing runners live',mmss((t.runnerVisionUntil-now)/1000),null,'on']);
+  const sig=L.map(x=>x[0]+x[3]+x[4]).join('|');
+  if(el.dataset.sig===sig){[...el.querySelectorAll('.ct')].forEach((c,i)=>{const v=L.filter(x=>x[2]!=='')[i];if(v)c.textContent=v[2];});return;}
+  el.dataset.sig=sig;
+  el.innerHTML=L.map(([ic,tt,c,act,cls])=>`<button class="slot ${cls}" ${act?`onclick="railUse('${act}')"`:'disabled'} title="${tt}"><span class="ic">${ic}</span>${c!==''?`<span class="ct">${c}</span>`:''}</button>`).join('');
+}
+function renderQuestCard(s){
+  const el=document.getElementById('quest-card2');if(!el)return;
+  const qs=s.quests||[],a=qs.find(q=>q.status==='active'),avail=qs.filter(q=>q.status==='available').length;
+  if(!s.myTeam||s.myTeam.status!=='active'){el.className='qc';return;}
+  el.onclick=()=>openPanel('quests');
+  if(!a){if(avail){el.className='qc show';el.innerHTML=`<div class="qt">⭐ ${avail} quest${avail>1?'s':''} available${qs.some(q=>q.status==='available'&&q.isBait)?' · ⚠ RISKY':''}</div><div class="qs">Tap to view</div>`;}else el.className='qc';return;}
+  let hint='',pct=0;
+  if(a.type==='distance'){pct=Math.min(100,a.distanceTravelled/a.distanceRequired*100);hint=`${a.distanceTravelled}/${a.distanceRequired} m travelled`;}
+  else{const f=S.gpsFix;
+    if(f&&Number.isFinite(a.targetLat)){const d=distM(f.lat,f.lng,a.targetLat,a.targetLng);hint=d<=(a.radiusMeters||50)?'You are at the spot!':`${Math.round(d)} m to the ${compass(bearingTo(f.lat,f.lng,a.targetLat,a.targetLng))}`;}else hint='Waiting for GPS...';
+    if(a.type==='hold')pct=a.holdProgress||0;
+    if(a.type==='multi_stage')pct=(a.currentStage>=a.totalStages)?(a.holdProgress||0):(a.currentStage/(a.totalStages||3))*100;}
+  const stage=a.type==='multi_stage'?` · stop ${Math.min((a.currentStage||0)+1,a.totalStages)}/${a.totalStages}`:'',tl=a.timeLeft!=null?` · ⏱ ${mmss(a.timeLeft)}`:'';
+  el.className='qc show';el.innerHTML=`<div class="qt">${esc(a.title)}${a.isBait?' ⚠ RISKY':''}${stage}${tl}</div><div class="qs">${hint}</div><div class="progress"><div style="width:${pct}%"></div></div>`;
+}
+function renderFab(s){
+  const b=document.getElementById('fab-tag'),t=s.myTeam;if(!b)return;
+  const show=t&&t.role==='tagger'&&t.status==='active'&&s.status==='active';b.style.display=show?'':'none';if(!show)return;
+  const pen=(t.penaltyUntil||0)-s.now;b.textContent=pen>0?'⛔ '+mmss(pen/1000):'🎯 TAG';b.className='fab'+(pen>0?' cd':'');
+}
+const csig=m=>JSON.stringify(m);
+function updateChatBadge(s){
+  const b=document.getElementById('nav-chat');if(!b)return;const ch=s.chat||[],open=document.getElementById('panel-chat').classList.contains('open');
+  if(S.chatSeenSig===undefined||open)S.chatSeenSig=ch.length?csig(ch[ch.length-1]):null;
+  let from=0;if(S.chatSeenSig!==null){let idx=-1;for(let i=ch.length-1;i>=0;i--)if(csig(ch[i])===S.chatSeenSig){idx=i;break;}from=idx+1;}
+  const fresh=ch.slice(from).filter(m=>m.playerName!==S.playerName).length;
+  let bd=b.querySelector('.nbadge');
+  if(fresh>0){if(!bd){bd=document.createElement('span');bd.className='nbadge';b.appendChild(bd);}bd.textContent=fresh>9?'9+':String(fresh);}else if(bd)bd.remove();
+}
+function detectEvents(p,s){
+  if(!p||p.status==='lobby')return;
+  const t=s.myTeam,pm=p.myTeam,tagger=t&&t.role==='tagger';
+  if(p.status==='head_start'&&s.status==='active')toast(tagger?'🏁 GO! Hunt the runners':'🏁 Taggers released - keep moving!','warn');
+  if(s.status==='active'&&p.nextSnapshotAt&&s.nextSnapshotAt&&s.nextSnapshotAt>p.nextSnapshotAt)toast(tagger?'📸 New runner snapshot on your map':'📸 Taggers just got a snapshot of all runners','info');
+  const pz=new Set((p.zones||[]).map(z=>z.id));for(const z of s.zones||[])if(!pz.has(z.id))toast(z.type==='danger'?'⚠ Danger zone: runners inside are seen live':'✨ Buff zone appeared - go inside for a boost',z.type==='danger'?'bad':'ok');
+  const pt=new Map((p.teams||[]).map(x=>[x.id,x.status]));for(const x of s.teams||[])if(pt.get(x.id)==='active'&&x.status!=='active'&&x.role==='runner')toast('💀 Team '+x.number+' was tagged out','bad');
+  (s.quests||[]).forEach(q=>{const o=(p.quests||[]).find(z=>z.id===q.id);if(o&&o.status==='active'&&q.status==='completed')toast('✅ Quest complete! Reward added','ok');if(o&&o.status==='active'&&q.status==='failed')toast('❌ Quest failed','bad');});
+  (s.quests||[]).forEach(q=>{if(q.isBait&&q.status==='available'&&!(p.quests||[]).some(z=>z.id===q.id))toast('⚠ Risky supply drop! Big reward, big danger','warn');});
+  if(t&&pm){
+    if(pm.hasExtraHealth&&!t.hasExtraHealth)toast('💔 Extra Health used up','bad');if(!pm.hasExtraHealth&&t.hasExtraHealth)toast('❤ Extra Health gained!','ok');
+    if((t.ghostCharges||0)>(pm.ghostCharges||0)||(t.smokeCharges||0)>(pm.smokeCharges||0)||(t.visionCharges||0)>(pm.visionCharges||0)||(t.snapshotCharges||0)>(pm.snapshotCharges||0))toast('🎁 New power-up! See the bar on the right','ok');
+    if(pm.isGhostMode&&!t.isGhostMode)toast('👻 Ghost Mode ended','info');
+    if(!(pm.hunterVisionUntil>p.now)&&t.hunterVisionUntil>s.now)toast('👁 You can see the Tagger live for a few seconds!','ok');
+    if(!(pm.runnerVisionUntil>p.now)&&t.runnerVisionUntil>s.now)toast('👁 You can see runners live for a few seconds!','ok');
+    if(pm.status==='active'&&t.status!=='active')showOut(s);
+  }
+}
+const _render5=render;
+render=function(s){
+  const prev=S.prevState;_render5(s);
+  try{ if(s.status!=='lobby'&&s.status!=='ended'){detectEvents(prev,s);refineHud(s);renderStrip(s);renderRail(s);renderQuestCard(s);renderFab(s);updateChatBadge(s);} }catch(e){console.error(e);}
+  S.prevState=s;
+};
+
+/* ===== bait quests, team callouts, MVP ===== */
+const CO_ICON={help:'❗',north:'⬆',south:'⬇',east:'➡',west:'⬅',hide:'🙈',split:'✂'};
+const CO_COLOR={help:'#ef4444',hide:'#a855f7',split:'#f59e0b'};
+async function callout(type){
+  const st=document.getElementById('co-status');
+  try{ const r=await api('/api/callout',{gameId:S.gameId,playerId:S.playerId,type}); if(st)st.textContent=''; closePanels(); toast('📣 Sent to your team: '+r.label,'ok'); }
+  catch(e){ if(st)st.textContent=e.message; }
+}
+function mapPing(c){
+  if(!S.map||!window.google||!window.google.maps||c.lat==null)return;
+  const ll={lat:c.lat,lng:c.lng};
+  const mk=new google.maps.Marker({map:S.map,position:ll,zIndex:900,label:{text:CO_ICON[c.type]||'📣',fontSize:'16px'},icon:{path:SQ,scale:15,fillColor:CO_COLOR[c.type]||'#ffd400',fillOpacity:.95,strokeColor:'#111',strokeWeight:3}});
+  const ring=new google.maps.Circle({map:S.map,center:ll,radius:15,strokeColor:'#ffd400',strokeOpacity:.9,strokeWeight:3,fillOpacity:0,clickable:false,zIndex:899});
+  const t0=Date.now(),life=Math.min(8000,Math.max(2000,(c.expiresAt-(S.last?S.last.now:c.at))));
+  const iv=setInterval(()=>{const k=(Date.now()-t0)/life;if(k>=1){clearInterval(iv);mk.setMap(null);ring.setMap(null);return;}ring.setRadius(15+60*((k*3)%1));},120);
+}
+function handleCallouts(s){
+  S.seenCallouts=S.seenCallouts||new Set();const first=!S.coInit;S.coInit=true;
+  for(const c of s.callouts||[]){
+    if(S.seenCallouts.has(c.id))continue;S.seenCallouts.add(c.id);
+    if(first&&s.now-c.at>4000)continue;
+    if(c.fromId!==S.playerId)toast(`${CO_ICON[c.type]||'📣'} ${c.fromName}: ${c.label}`,c.type==='help'?'bad':'warn');
+    mapPing(c);
+  }
+}
+function renderMvp(s){
+  const el=document.getElementById('over-mvp');if(!el)return;const m=s.mvp;
+  if(!m||!m.mvp){el.innerHTML='';return;}
+  const x=m.mvp,chips=(x.highlights||[]).map(t=>`<span>${esc(t)}</span>`).join('');
+  const pod=(m.podium||[]).slice(1).map((p,i)=>`<div><span>${i+2}. ${esc(p.name)} (Team ${p.teamNumber})</span><span>${p.score} pts</span></div>`).join('');
+  el.innerHTML=`<div class="mvp"><div class="t">🏆 MVP</div><div class="n">${esc(x.name)}</div><div class="mvp-sub">Team ${x.teamNumber} · ${x.role==='tagger'?'Tagger':'Runner'}${x.playerId===S.playerId?' · THAT IS YOU!':''} · ${x.score} pts</div><div class="c">${chips}</div>${pod?`<div class="pod">${pod}</div>`:''}<div class="mvp-how">Points: tags, survival, quests, distance, teamwork</div></div>`;
+}
+const _render6=render;
+render=function(s){ _render6(s); try{ if(s.status!=='lobby'&&s.status!=='ended')handleCallouts(s); }catch(e){console.error(e);} };
+</script>
+</body>
+</html>
