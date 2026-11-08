@@ -25,7 +25,7 @@ This build fixes the core gameplay/security rules before UI redesign.
 - Extra Health is a team-wide reward. Any one team member can complete the extreme quest; the reward is granted to the whole team, so the quest does not require every teammate to participate.
 - When Extra Health is awarded, the server rotates that team’s secret code. The new code is the only code that can trigger the Extra Health result when a Tagger enters it.
 - When Extra Health absorbs a tag, the Tagger team receives a server-controlled movement penalty scaled to game duration: 10-minute games use 1 minute; 60-minute games use 5 minutes, with proportional scaling between those bounds.
-- Safe-zone movement is generated randomly within the original playable circle, rather than repeatedly moving around the original center/current center.
+- Every zone shrink makes a SMALLER zone than the one before. It can relocate anywhere inside the ORIGINAL circle (never outside it), as long as its centre is inside the current zone so teams can reach it. Zones never grow.
 - Safe-zone relocation has a server-controlled countdown before elimination.
 - GPS updates require valid coordinates, a fresh timestamp, and a reported accuracy value. Implausible movement is flagged server-side rather than blindly trusted.
 - Player session tokens prevent one client from loading another player's private state by changing a player ID.
