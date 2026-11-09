@@ -557,7 +557,12 @@ class Game {
             const p=this.players.get(pid);
             if(p && isInside(p.lat,p.lng,this.safeZone.centerLat,this.safeZone.centerLng,this.safeZone.radiusMeters)) inside=true;
           }
-          if(!inside){ t.status='eliminated'; t.health=0; }
+          if(!inside){
+            t.status='eliminated'; t.health=0;
+            // record it like a tag does, so MVP + Battle Cards know this team did NOT survive and when it went out
+            const ms=this.matchStats.teams[t.id];
+            if(ms){ ms.survived=false; ms.eliminatedAt=now; }
+          }
         }
       }
       // Final circle: last ~18% of game forces a small end zone once
@@ -1344,7 +1349,8 @@ const server=http.createServer((req,res)=>{
       };
       // Preset mode: host only chose duration, radius, teams, center — server fills the rest.
       if(data.preset === true || data.preset === 'true' || data.preset === 1){
-        const auto = computePresetSettings(durationSeconds, initialRadiusMeters);
+        // same limits the Game itself applies, so preset timings always match the real game length and radius
+        const auto = computePresetSettings(clampNumber(durationSeconds,300,10800,1800), clampNumber(initialRadiusMeters,500,20000,3000));
         settings = Object.assign(settings, auto);
       }
       const game=new Game(settings);
