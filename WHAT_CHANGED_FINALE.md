@@ -33,3 +33,40 @@ Three new features. Everything else (snapshots, Extra Health, Ghost, Smoke, Visi
 - The faint outline of your original play area is now a thin, light grey line instead of a second purple one.
 - The shrink animation follows the server clock, so a phone with a wrong clock doesn't show the ring early/late.
 - Minimum radius on the create screen is still 500m (the server also enforces it); smaller values get bumped up to 500m.
+
+## 6) Zone preview on the create screen (Game Presets AND Custom Game)
+- When the host picks the game center, a green ring shows the real zone size around it. It works the same in both modes.
+- The ring follows the marker LIVE while you drag it, jumps to wherever you tap, and changes size as you type the radius.
+- The map no longer jumps around. It only zooms to fit the ring when the first center is picked (or GPS finds you), when the radius changes (after you stop typing), or when the create sheet is re-opened. Dragging and tapping never re-zoom.
+- The note under the map says the radius and how wide the zone is, for example "Zone preview: 3,000 m radius (6 km across)".
+- If you type a radius outside 400 m to 20,000 m, the ring shows what the game will REALLY use and the note says so (for example "you typed 80", the game uses 400 m).
+- A slow GPS fix can no longer replace a center the host already tapped.
+- The ring, the "Zone radius" line in the preset box, and the radius actually sent to the server now all use the same number (before, a blank radius previewed 500 m but created 3,000 m, and a blank duration previewed 60 min but created 5 min).
+
+## 7) Bugs found by full-game testing, and fixed
+- A team knocked out by the SHRINKING ZONE was recorded as having survived. MVP and Battle Cards showed it as "SURVIVED" with 0:00 alive. Now it is recorded like a tag elimination (not survived, with the time it went out). This happened in about 1 of every 3 games.
+- Preset timings (head start, shrink times) are now worked out from the same clamped duration and radius the game really uses.
+
+## Testing
+- hard_test.js: all existing tests plus a new test for the zone-elimination bug.
+- full_game_fuzz.js (new, no installs needed): plays whole games by itself. Try `node full_game_fuzz.js 500`. It checks every rule after every step: zones only shrink, stay inside the original zone, quests stay on roads, no eliminated team comes back, MVP and Battle Cards are right, and nothing crashes.
+- Run on this version: 10,000+ full games with no problems.
+
+## 8) Quests not appearing + slow Start (they had the same cause)
+- Quests only spawn on roads, and road data comes from OpenStreetMap servers. When that data did not load, there were no quests at all, and Start waited up to 10 seconds for it every time.
+- Start never waits for road data any more. It starts at once; quests appear the moment roads are loaded (also during the head start).
+- Road loading is much sturdier: all 5 road servers are asked at the same time (first good answer wins), it retries 3 times, and the answer is remembered so the next game in the same place gets roads instantly.
+- Areas with almost no real streets (campus, park, village): walkable paths (footways, paths, tracks, pedestrian ways) are used too, so quests still appear. Areas with plenty of streets still use streets only.
+- Backup: if the SERVER cannot reach the road servers, the HOST'S PHONE fetches the roads and uploads them (new route /api/roads, host only, only points inside the game area are kept).
+- The host sees the road status in the lobby (loading / ready / problem). Players see "Waiting for road data..." in the Quests panel instead of a blank list.
+- Render log lines to look for: "[ROADS] game ABC123: 842 road points" (good), "[ROADS] load failed (try 1/3) ..." with the reason, "(uploaded by the host's phone)", "(remembered from an earlier game here)".
+
+## 9) My Rules role picker closing by itself
+- The lobby player list was rebuilt every second, which destroyed the Runner/Tagger dropdown while you were choosing. Now the list is left alone while a dropdown is open, and only redrawn when something actually changed. Same fix for the "Choose teammate" dropdown.
+
+## 10) Minimum zone is now 400 m
+- 400 and above can be set freely. Anything below 400 becomes 400 (the preview ring and note say so). Changed on the create screen, the preview, and the server.
+
+## More tests
+- roads_test.js (new): failing/hanging road servers, footpath fallback, memory, host-phone upload, and that Start takes milliseconds. Run `node roads_test.js`.
+- full_game_fuzz.js now also plays 400 m games.

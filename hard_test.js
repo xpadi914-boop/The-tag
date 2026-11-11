@@ -194,4 +194,26 @@ assert.ok(relocated>0,'zones never relocated, they only ever shrank in place');
   assert.equal(g.pendingSafeZone,null); assert.equal(g.safeZone.radiusMeters,target.radiusMeters);
 }
 
+
+// 11. A team knocked out by the shrinking zone must be recorded as NOT surviving (MVP + Battle Cards depend on it)
+{
+  const g=new Game({teamSize:1,durationSeconds:3600,headStartSeconds:0,initialRadiusMeters:3000}); add(g,4); start(g); g.status='active';
+  const runners=[...g.teams.values()].filter(t=>t.role==='runner');
+  const victim=runners[0], safe=runners.slice(1);
+  const pl=t=>g.players.get(t.playerIds[0]);
+  for(const p of g.players.values()){ p.lat=g.centerLat; p.lng=g.centerLng; p.hasFix=true; p.isOnline=true; p.lastSeen=Date.now(); }
+  const v=pl(victim); v.lat=g.centerLat+1500/111320; // 1.5 km out, will be outside a 500 m zone
+  g.matchStats.startedAt-=90000; // pretend the game has run for 90 s
+  g.pendingSafeZone={centerLat:g.centerLat,centerLng:g.centerLng,radiusMeters:500,relocEndsAt:Date.now()-1,phase:'relocating'};
+  g.tick();
+  assert.equal(victim.status,'eliminated','runner outside the new zone was not eliminated');
+  const ms=g.matchStats.teams[victim.id];
+  assert.equal(ms.survived,false,'zone-eliminated team still marked survived'); assert.ok(ms.eliminatedAt>0,'no eliminatedAt for zone-eliminated team');
+  for(const t of safe) assert.equal(g.matchStats.teams[t.id].survived,true);
+  g.endGame('host');
+  assert.ok(g.matchStats.teams[victim.id].surviveSeconds>=89&&g.matchStats.teams[victim.id].surviveSeconds<=95,'survive time wrong: '+g.matchStats.teams[victim.id].surviveSeconds);
+  const card=g.getStateFor(v.id).battleCards.find(c=>c.teamId===victim.id);
+  assert.equal(card.survived,false,'battle card says the eliminated team survived'); assert.equal(card.status,'eliminated');
+}
+
 console.log('BACKEND HARD TESTS: PASS');

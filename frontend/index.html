@@ -495,10 +495,10 @@ button.kick{width:34px;padding:2px 0!important;font-size:16px!important;backgrou
         </div>
 
         <label>Game Duration (minutes)</label>
-        <input id="create-duration" class="pixel-input" type="number" min="5" max="180" value="60" oninput="updatePresetPreview()"/>
+        <input id="create-duration" class="pixel-input" type="number" min="5" max="180" value="60" oninput="updatePresetPreview()" onchange="updatePresetPreview()"/>
 
         <label>Initial Game Radius (meters)</label>
-        <input id="create-radius" class="pixel-input" type="number" min="500" max="20000" step="100" value="3000" oninput="updatePresetPreview();updateZonePreview()"/>
+        <input id="create-radius" class="pixel-input" type="number" min="400" max="20000" step="100" value="3000" oninput="onCreateRadiusInput()" onchange="onCreateRadiusInput()"/>
 
         <label>Players Per Team</label>
         <select id="create-team-size" class="pixel-input" onchange="toggleCustomTeams()">
@@ -548,7 +548,7 @@ button.kick{width:34px;padding:2px 0!important;font-size:16px!important;backgrou
           </select>
         </div>
 
-        <div class="map-picker-wrap"><div id="center-picker"></div><div class="picker-note">Tap the map or drag the marker to choose the game center.</div></div>
+        <div class="map-picker-wrap"><div id="center-picker"></div><div id="zone-preview-note" class="picker-note">Tap the map or drag the marker to choose the game center. Your zone ring will show here.</div></div>
         <input id="create-center-lat" type="hidden"/><input id="create-center-lng" type="hidden"/>
         <button class="mc-btn" onclick="createGame()">CREATE LOBBY</button>
       </div>
@@ -567,6 +567,7 @@ button.kick{width:34px;padding:2px 0!important;font-size:16px!important;backgrou
     <div style="color:var(--muted); font-size:0.85rem">Game Code</div>
     <div class="lobby-code" id="lobby-code">————</div>
     <div style="color:var(--muted); margin-top:4px"><span id="lobby-count">0</span> players</div>
+    <div id="lobby-roads" style="color:var(--muted); font-size:.78rem; margin-top:6px"></div>
   </div>
 
   <div class="card">
@@ -755,29 +756,70 @@ function show(id) {
 let centerPickerReady=false;
 let roleRevealShown=false;
 let transitionBusy=false;
-function getCreateRadiusM(){
-  const n=Math.floor(+document.getElementById('create-radius')?.value);
-  return Number.isFinite(n)?Math.min(20000,Math.max(500,n)):3000;
+// The zone radius the game will REALLY use (same rules as the server: blank/0 = 3000, otherwise 400–20000).
+function getCreateRadiusInfo(){
+  const raw=+document.getElementById('create-radius')?.value;
+  if(!raw) return {radius:3000,entered:null,clamped:false};
+  const radius=Math.min(20000,Math.max(400,raw));
+  return {radius,entered:raw,clamped:radius!==raw};
 }
+function getCreateRadiusM(){ return getCreateRadiusInfo().radius; }
+// Game duration in minutes the game will really use (server: 5–180, blank/0 = 60 min default).
+function getCreateDurationMin(){
+  const raw=+document.getElementById('create-duration')?.value;
+  if(!raw) return 60;
+  return Math.min(180,Math.max(5,raw));
+}
+function fmtMeters(m){ return Math.round(m).toLocaleString('en-US')+' m'; }
+function getCreateCenter(){
+  const la=document.getElementById('create-center-lat')?.value, ln=document.getElementById('create-center-lng')?.value;
+  if(la===''||ln===''||la==null||ln==null) return null;
+  const lat=Number(la), lng=Number(ln);
+  return (Number.isFinite(lat)&&Number.isFinite(lng))?{lat,lng}:null;
+}
+function updateZonePreviewNote(){
+  const note=document.getElementById('zone-preview-note'); if(!note) return;
+  const info=getCreateRadiusInfo(), c=getCreateCenter();
+  const across=info.radius*2>=1000?((info.radius*2)/1000).toFixed(1).replace(/\.0$/,'')+' km':fmtMeters(info.radius*2);
+  let t;
+  if(!c) t='Tap the map to place the game center. A green ring will show your '+fmtMeters(info.radius)+' zone.';
+  else t='Zone preview: '+fmtMeters(info.radius)+' radius ('+across+' across). Tap the map or drag the marker to move it.';
+  if(info.clamped) t+=' Allowed range is 400 m to 20,000 m, so the game will use '+fmtMeters(info.radius)+' (you typed '+Math.round(info.entered).toLocaleString('en-US')+').';
+  note.textContent=t;
+}
+// Draw/move the ring. Never re-zooms by itself, so dragging and tapping stay smooth.
 function updateZonePreview(){
+  updateZonePreviewNote();
   if(!S.centerPicker||!S.centerZonePreview) return;
-  const lat=+document.getElementById('create-center-lat')?.value;
-  const lng=+document.getElementById('create-center-lng')?.value;
-  const r=getCreateRadiusM();
-  if(!Number.isFinite(lat)||!Number.isFinite(lng)){
-    S.centerZonePreview.setMap(null);
-    return;
-  }
-  S.centerZonePreview.setCenter({lat,lng});
-  S.centerZonePreview.setRadius(r);
-  S.centerZonePreview.setMap(S.centerPicker);
-  // Fit the preview circle so host sees true size
-  try{
-    const bounds=S.centerZonePreview.getBounds();
-    if(bounds) S.centerPicker.fitBounds(bounds, 24);
-  }catch(e){}
-  const note=document.querySelector('.map-picker-wrap .picker-note');
-  if(note) note.textContent=`Zone preview: ${r} m radius from center. Tap/drag center — circle updates live.`;
+  const c=getCreateCenter();
+  if(!c){ S.centerZonePreview.setMap(null); return; }
+  S.centerZonePreview.setCenter(c);
+  S.centerZonePreview.setRadius(getCreateRadiusM());
+  if(S.centerZonePreview.getMap()!==S.centerPicker) S.centerZonePreview.setMap(S.centerPicker);
+}
+// Zoom/pan so the whole ring is visible. Only used when the radius changes, the first center is chosen, or the sheet re-opens.
+function fitZonePreview(){
+  if(!S.centerPicker||!window.google?.maps) return;
+  const c=getCreateCenter(); if(!c) return;
+  const el=document.getElementById('center-picker'); if(!el||!el.offsetWidth||!el.offsetHeight) return; // hidden: nothing to fit
+  const r=getCreateRadiusM(), dLat=r/111320, dLng=r/(111320*Math.max(0.05,Math.cos(c.lat*Math.PI/180)));
+  const bounds=new google.maps.LatLngBounds({lat:c.lat-dLat,lng:c.lng-dLng},{lat:c.lat+dLat,lng:c.lng+dLng});
+  try{ S.centerPicker.fitBounds(bounds,24); }catch(e){}
+}
+let _zoneFitTimer=null;
+function scheduleZoneFit(){ clearTimeout(_zoneFitTimer); _zoneFitTimer=setTimeout(fitZonePreview,350); }
+// Radius box: ring + text update on every keystroke, the zoom waits until the host stops typing.
+function onCreateRadiusInput(){
+  try{ updatePresetPreview(); }catch(e){}
+  updateZonePreview();
+  scheduleZoneFit();
+}
+// The map can't size itself while it is hidden, so wake it up when the create sheet / tab is shown.
+function refreshCenterPicker(){
+  if(!S.centerPicker||!window.google?.maps) return;
+  try{ google.maps.event.trigger(S.centerPicker,'resize'); }catch(e){}
+  updateZonePreview();
+  fitZonePreview();
 }
 function initCenterPicker(){
   if(centerPickerReady||!document.getElementById('center-picker')) return;
@@ -793,19 +835,22 @@ function initCenterPicker(){
     fillColor:'#22c55e', fillOpacity:0.12,
     clickable:false, zIndex:2
   });
-  const setCenter=ll=>{
+  // Move the center. fit=true also zooms so the whole ring is visible (first center / GPS fix only).
+  // fromMarker=true while the marker itself is being dragged (we must not touch its position then).
+  const setCenter=(ll,fit,fromMarker)=>{
     const lat=ll.lat(),lng=ll.lng();
-    marker.setVisible(true);
     document.getElementById('create-center-lat').value=lat;
     document.getElementById('create-center-lng').value=lng;
-    marker.setPosition({lat,lng});
-    map.panTo({lat,lng});
+    if(!fromMarker){ marker.setPosition({lat,lng}); marker.setVisible(true); }
     updateZonePreview();
+    if(fit) fitZonePreview();
   };
-  map.addListener('click',e=>setCenter(e.latLng));
-  marker.addListener('dragend',e=>setCenter(e.latLng));
+  map.addListener('click',e=>setCenter(e.latLng,!getCreateCenter(),false));
+  marker.addListener('drag',e=>setCenter(e.latLng,false,true));      // ring follows the marker live
+  marker.addListener('dragend',e=>setCenter(e.latLng,false,true));
   marker.setVisible(false);
-  navigator.geolocation&&navigator.geolocation.getCurrentPosition(p=>{setCenter(new google.maps.LatLng(p.coords.latitude,p.coords.longitude));},()=>{},{enableHighAccuracy:true,timeout:12000});
+  updateZonePreviewNote();
+  navigator.geolocation&&navigator.geolocation.getCurrentPosition(p=>{ if(!getCreateCenter()) setCenter(new google.maps.LatLng(p.coords.latitude,p.coords.longitude),true); },()=>{},{enableHighAccuracy:true,timeout:12000}); // never overrides a center the host already picked
 }
 
 function switchTab(t) {
@@ -813,6 +858,7 @@ function switchTab(t) {
   document.querySelector(`.tab[onclick*="${t}"]`).classList.add('active');
   document.getElementById('tab-create').style.display = t === 'create' ? 'block' : 'none';
   document.getElementById('tab-join').style.display = t === 'join' ? 'block' : 'none';
+  if(t==='create') setTimeout(refreshCenterPicker,80);
 }
 
 async function api(path, body) {
@@ -833,7 +879,7 @@ function openHomeSetup(tab){
   const n=document.getElementById('home-player-name')?.value?.trim()||'Player';
   document.getElementById('create-name').value=n; document.getElementById('join-name').value=n;
   document.getElementById('home-setup').classList.add('open');
-  switchTab(tab); setTimeout(initCenterPicker,60);
+  switchTab(tab); setTimeout(()=>{ initCenterPicker(); refreshCenterPicker(); },60);
   if(tab==='create' && typeof setCreateMode==='function') setCreateMode('preset');
 }
 function closeHomeSetup(){document.getElementById('home-setup').classList.remove('open');}
@@ -891,8 +937,8 @@ function computePresetSettings(durationMin, radiusM){
 function updatePresetPreview(){
   const el = document.getElementById('preset-preview-lines');
   if(!el) return;
-  const durationMin = Number.isFinite(+document.getElementById('create-duration')?.value) ? +document.getElementById('create-duration').value : 60;
-  const radiusM = getCreateRadiusM ? getCreateRadiusM() : (+document.getElementById('create-radius')?.value || 3000);
+  const durationMin = getCreateDurationMin();
+  const radiusM = getCreateRadiusM();
   const p = computePresetSettings(durationMin, radiusM);
   el.innerHTML =
     `Head start: <b>${p.headStartMin} min</b><br>` +
@@ -915,8 +961,8 @@ async function createGame() {
     if(custom&&(!(cR>=1)||!(cT>=1)||cR>60||cT>60)) return alert('Custom teams: enter at least 1 runner and 1 tagger (max 60 each).');
     if(_la===''||_ln===''||!Number.isFinite(centerLat)||!Number.isFinite(centerLng)) return alert('Pick the game center on the map first.');
     const mode=document.getElementById('create-mode').value||'preset';
-    const durationMin=Number.isFinite(+document.getElementById('create-duration').value)?+document.getElementById('create-duration').value:60;
-    const radiusM=+document.getElementById('create-radius').value||3000;
+    const durationMin=getCreateDurationMin();
+    const radiusM=getCreateRadiusM();
     const payload={
       name:document.getElementById('create-name').value||'Host',
       durationSeconds:durationMin*60,
@@ -980,6 +1026,7 @@ async function fetchState() {
 }
 
 function render(s) {
+  try{ maybeHostRoadFallback(s); }catch(e){ console.warn(e); }
   if (s.status === 'lobby') { show('lobby'); renderLobby(s); }
   else if (s.status === 'ended') {
     show('over');
@@ -1006,6 +1053,83 @@ function render(s) {
   }
 }
 
+// ---- Lobby helpers: keep an open role/teammate dropdown alive while the page refreshes every second ----
+function lobbyPickerBusy(){ const w=document.getElementById('lobby-players'), a=document.activeElement; return !!(w&&a&&a.tagName==='SELECT'&&w.contains(a)); }
+function setLobbyPlayersHtml(html){
+  const w=document.getElementById('lobby-players'); if(!w) return;
+  S._lobbyHtml=html;                                              // newest version we want to show
+  if(lobbyPickerBusy()) return;                                   // a dropdown is open: don't destroy it, show the update when it closes
+  if(w.dataset.html===html && w.childElementCount>0) return;      // nothing changed: leave the page alone
+  w.innerHTML=html; w.dataset.html=html;
+}
+function lobbyFlush(){ if(S._lobbyHtml!=null) setLobbyPlayersHtml(S._lobbyHtml); }
+
+// ---- Roads for quests. The server loads them; if it can't reach the road servers, the HOST'S PHONE fetches and uploads them ----
+const ROAD_MIRRORS=['overpass-api.de','lz4.overpass-api.de','overpass.kumi.systems','overpass.private.coffee','overpass.openstreetmap.fr'];
+const ROAD_STREETS=['trunk','primary','secondary','tertiary','unclassified','residential','living_street','service','trunk_link','primary_link','secondary_link','tertiary_link'];
+const ROAD_PATHS=['pedestrian','footway','cycleway','path','track'];
+function roadElOk(el,paths){
+  const t=(el&&el.tags)||{};
+  if(!(ROAD_STREETS.includes(t.highway)||(paths&&ROAD_PATHS.includes(t.highway)))) return false;
+  if(t.area==='yes'||t.access==='private'||t.access==='no') return false;
+  if(t.tunnel&&t.tunnel!=='no') return false;
+  if(t.service==='driveway'||t.service==='parking_aisle'||t.service==='drive-through') return false;
+  return true;
+}
+function roadPointsFromElements(elements,lat,lng,maxR,paths){
+  const pts=[];
+  for(const el of elements||[]){
+    if(!roadElOk(el,paths)) continue;
+    const g=el.geometry; if(!g||g.length<2) continue;
+    for(const v of g){ if(v&&Number.isFinite(v.lat)&&Number.isFinite(v.lon)&&distM(lat,lng,v.lat,v.lon)<=maxR) pts.push([v.lat,v.lon]); }
+    for(let i=0;i<g.length-1;i++){ const a=g[i],b=g[i+1]; if(!a||!b) continue; const m=[(a.lat+b.lat)/2,(a.lon+b.lon)/2]; if(distM(lat,lng,m[0],m[1])<=maxR) pts.push(m); }
+  }
+  return pts;
+}
+// ask every road server at once, first good answer wins
+function overpassFromBrowser(query){
+  return new Promise((resolve,reject)=>{
+    const ctrls=[],errs=[]; let left=ROAD_MIRRORS.length,done=false;
+    const finish=(fn,v)=>{ if(done)return; done=true; ctrls.forEach(c=>{try{c.abort()}catch(e){}}); fn(v); };
+    const fail=m=>{ errs.push(m); if(--left<=0) finish(reject,new Error(errs.join(' | '))); };
+    ROAD_MIRRORS.forEach(h=>{
+      const c=new AbortController(); ctrls.push(c); const to=setTimeout(()=>c.abort(),20000);
+      fetch('https://'+h+'/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(query),signal:c.signal})
+        .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(j=>{ clearTimeout(to); if(j&&Array.isArray(j.elements)&&(j.elements.length||!j.remark)) finish(resolve,j); else fail(h+' no usable answer'); })
+        .catch(e=>{ clearTimeout(to); fail(h+' '+((e&&e.message)||e)); });
+    });
+  });
+}
+async function hostFetchRoads(s){
+  const lat=s.centerLat,lng=s.centerLng,r=Math.min(s.initialRadiusMeters,8000);
+  const q=types=>`[out:json][timeout:12];way["highway"~"^(${types.join('|')})$"](around:${Math.floor(r)},${lat},${lng});out geom;`;
+  let pts=roadPointsFromElements((await overpassFromBrowser(q(ROAD_STREETS))).elements,lat,lng,r,false);
+  if(pts.length<15){ try{ pts=pts.concat(roadPointsFromElements((await overpassFromBrowser(q(ROAD_PATHS))).elements,lat,lng,r,true)); }catch(e){} }
+  if(pts.length<3) return false;
+  for(let i=pts.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pts[i],pts[j]]=[pts[j],pts[i]]; }
+  await api('/api/roads',{gameId:S.gameId,playerId:S.playerId,sessionToken:S.sessionToken,points:pts.slice(0,1200).map(p=>[+p[0].toFixed(6),+p[1].toFixed(6)])});
+  return true;
+}
+function maybeHostRoadFallback(s){
+  if(!s||!s.me||!s.me.isHost||!s.roads||s.roads.loaded||s.status==='ended') return;
+  if(/no roads found/.test(s.roads.error||'')) return;                      // the server saw a clean "nothing here": the phone would find nothing too
+  let F=S.roadFb; if(!F||F.gameId!==S.gameId) F=S.roadFb={gameId:S.gameId,tries:0,busy:false,last:0,since:Date.now()};
+  if(F.busy||F.tries>=3) return;
+  if(s.roads.loading&&Date.now()-F.since<6000) return;                      // give the server a few seconds to load it itself
+  if(Date.now()-F.last<20000) return;
+  F.busy=true; F.tries++; F.last=Date.now();
+  hostFetchRoads(s).then(ok=>{ if(ok) fetchState(); }).catch(e=>console.warn('road backup failed',e)).finally(()=>{ F.busy=false; });
+}
+function roadsStatusText(s){
+  const r=s.roads; if(!r) return '';
+  if(r.loaded) return '🛣️ Roads for quests: ready ('+r.points+' points'+(r.source==='host'?', loaded by your phone':(r.source==='cache'?', remembered':''))+')';
+  if(/no roads found/.test(r.error||'')) return '⚠️ No roads or paths found near this center, so quests cannot appear here. Try a different center.';
+  if(S.roadFb&&S.roadFb.busy) return '⏳ Your phone is loading roads for quests…';
+  if(r.loading) return '⏳ Loading roads for quests…';
+  return '⚠️ Roads for quests are not loaded yet, still trying…';
+}
+
 function renderLobby(s) {
   document.getElementById('lobby-code').textContent = s.code;
   document.getElementById('lobby-count').textContent = s.players.length;
@@ -1013,13 +1137,13 @@ function renderLobby(s) {
   let playersHtml = s.players.map(p => {
     const teammate = p.teammateId ? s.players.find(x => x.id === p.teammateId) : null;
     const choice = formation === 'choose' && p.isMe ? `
-      <select onchange="chooseTeammate(this.value)" style="max-width:170px;margin:0">
+      <select onchange="chooseTeammate(this.value);this.blur()" onblur="lobbyFlush()" style="max-width:170px;margin:0">
         <option value="">Choose teammate…</option>
         ${s.players.filter(x => x.id !== p.id).map(x => `<option value="${x.id}" ${p.teammateId===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}
       </select>` : (formation === 'choose' && teammate ? `<span class="badge ready">↔ ${esc(teammate.name)}</span>` : '');
     const rolePick = s.teamMode==='my_rules' ? (
       s.me.isHost
-        ? `<select onchange="setPlayerRole('${p.id}',this.value)" style="max-width:120px;margin:0;font-size:11px">
+        ? `<select onchange="setPlayerRole('${p.id}',this.value);this.blur()" onblur="lobbyFlush()" style="max-width:120px;margin:0;font-size:11px">
             <option value="">Role…</option>
             <option value="runner" ${p.assignedRole==='runner'?'selected':''}>Runner</option>
             <option value="tagger" ${p.assignedRole==='tagger'?'selected':''}>Tagger</option>
@@ -1031,7 +1155,8 @@ function renderLobby(s) {
       <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${rolePick}${choice}<span class="badge ${p.isReady ? 'ready' : 'wait'}">${p.isReady ? 'Ready' : 'Waiting'}</span>${s.me.isHost&&!p.isMe?`<button class="kick" onclick="kickPlayer('${p.id}')">✕</button>`:''}</span>
     </div>`;
   }).join('');
-  document.getElementById('lobby-players').innerHTML = playersHtml;
+  setLobbyPlayersHtml(playersHtml);
+  const roadsEl=document.getElementById('lobby-roads'); if(roadsEl) roadsEl.textContent = s.me.isHost ? roadsStatusText(s) : '';
   const formationNote=document.getElementById('lobby-formation-note');
   if(formationNote) formationNote.textContent = s.teamMode==='my_rules' ? 'Custom — My Rules: host assigns Runner or Tagger to each player below. All taggers hunt as one team; each runner plays solo. Every player needs a role before Start.' : s.teamMode==='custom' ? `Custom game: ${s.customTaggers} tagger(s) + ${s.customRunners} runner(s) = ${s.customTaggers+s.customRunners} players needed (you have ${s.players.length}). Roles are picked randomly at start. Every runner plays solo.` : formation === 'choose' ? 'Choose Teammates mode: select the player you want on your team. Mutual choices are preserved.' : 'Random Teams mode: the server assigns teams when the host starts.';
   const btn = document.getElementById('btn-ready');
@@ -1128,7 +1253,7 @@ function renderGame(s) {
         ${q.status==='available' ? `<button style="margin-top:10px" onclick="activateQuest('${q.id}')">Start Quest</button>` : ''}
       </div>`;
     });
-  } else questHtml = '<div style="color:var(--muted)">No quests right now</div>';
+  } else questHtml = '<div style="color:var(--muted)">'+((s.roads&&!s.roads.loaded)?'⏳ Waiting for road data so quests can appear on roads…':'No quests right now')+'</div>';
   document.getElementById('panel-quests-body').innerHTML = questHtml;
 
   // Actions panel: do not rebuild the Tagger code input on every poll.
@@ -1397,6 +1522,7 @@ async function setPlayerRole(targetId, role){
   try{
     if(!role) return;
     await api('/api/set-role',{gameId:S.gameId,playerId:S.playerId,sessionToken:S.sessionToken,targetId,role});
+    fetchState();
   }catch(e){ alert(e.message||e); }
 }
 async function chooseTeammate(teammateId) {

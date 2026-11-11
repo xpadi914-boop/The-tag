@@ -42,55 +42,77 @@ function randomPointInCircle(cLat,cLng,radiusMeters){
   return {lat,lng};
 }
 
-// Road data comes from OpenStreetMap (Overpass). Several mirrors so one slow/down server doesn't kill road loading.
-const OVERPASS_HOSTS=['overpass-api.de','overpass.kumi.systems','overpass.private.coffee'];
-function overpassQueryOnce(host,query){
+// ---------------------------------------------------------------------------------------------
+// ROAD DATA (OpenStreetMap, through "Overpass" servers). Quests only spawn on roads, so this has to be reliable:
+//  - we ask SEVERAL Overpass servers AT THE SAME TIME and take the first good answer
+//  - if every server fails we retry a few times (the lobby gives us time, the host never waits for it)
+//  - answers are remembered, so the next game in the same place gets its roads instantly
+//  - if the area has almost no real streets (campus, park, village) we also use walkable paths
+//  - if the SERVER can't reach Overpass at all, the host's phone can fetch it and upload it (POST /api/roads)
+// ---------------------------------------------------------------------------------------------
+const OVERPASS_ENDPOINTS=[
+  {host:'overpass-api.de',path:'/api/interpreter'},
+  {host:'lz4.overpass-api.de',path:'/api/interpreter'},
+  {host:'overpass.kumi.systems',path:'/api/interpreter'},
+  {host:'overpass.private.coffee',path:'/api/interpreter'},
+  {host:'overpass.openstreetmap.fr',path:'/api/interpreter'}
+];
+function overpassQueryOnce(ep,query,reqs){
   return new Promise((resolve,reject)=>{
     const body='data='+encodeURIComponent(query);
-    const req=https.request({
-      hostname:host, path:'/api/interpreter', method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body),'User-Agent':'IRL-Tag-Game/1.0'},
-      timeout:20000
-    },res=>{
-      let data='';
-      res.on('data',c=>data+=c);
-      res.on('end',()=>{
-        if(res.statusCode!==200) return reject(new Error(host+' HTTP '+res.statusCode));
-        try{ const j=JSON.parse(data); if(!j||!Array.isArray(j.elements)) return reject(new Error(host+' bad reply')); resolve(j); }catch(e){ reject(e); }
+    let req;
+    try{
+      req=https.request({
+        hostname:ep.host, path:ep.path, method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body),'User-Agent':'IRL-Tag-Game/1.0','Accept':'application/json'},
+        timeout:15000
+      },res=>{
+        let data='';
+        res.on('data',c=>data+=c);
+        res.on('end',()=>{
+          if(res.statusCode!==200) return reject(new Error(ep.host+' HTTP '+res.statusCode));
+          try{ const j=JSON.parse(data); if(!j||!Array.isArray(j.elements)) return reject(new Error(ep.host+' bad reply')); resolve(j); }catch(e){ reject(new Error(ep.host+' unreadable reply')); }
+        });
       });
-    });
-    req.on('error',reject);
-    req.on('timeout',()=>{ req.destroy(); reject(new Error(host+' timeout')); });
+    }catch(e){ return reject(e); }
+    reqs.push(req);
+    req.on('error',e=>reject(new Error(ep.host+' '+((e&&e.message)||'error'))));
+    req.on('timeout',()=>{ req.destroy(); reject(new Error(ep.host+' timeout')); });
     req.write(body); req.end();
   });
 }
-async function overpassQuery(query){
-  let lastErr=null;
-  for(const host of OVERPASS_HOSTS){
-    try{
-      const j=await overpassQueryOnce(host,query);
-      if(j.elements.length) return j;
-      lastErr=new Error(host+' returned no roads'+(j.remark?' ('+j.remark+')':''));
-    }catch(e){ lastErr=e; }
-  }
-  throw lastErr||new Error('Overpass failed');
+// Ask every server at once. A good answer = has roads, or a clean "no roads here" (no error remark).
+function overpassQuery(query){
+  return new Promise((resolve,reject)=>{
+    const reqs=[], errs=[]; let left=OVERPASS_ENDPOINTS.length, done=false;
+    const finish=(fn,v)=>{ if(done) return; done=true; for(const r of reqs){ try{ r.destroy(); }catch(e){} } fn(v); };
+    const fail=m=>{ errs.push(m); if(--left<=0) finish(reject,new Error(errs.join(' | '))); };
+    for(const ep of OVERPASS_ENDPOINTS){
+      overpassQueryOnce(ep,query,reqs).then(j=>{
+        if(j.elements.length||!j.remark) finish(resolve,j); else fail(ep.host+' '+j.remark);
+      }).catch(e=>fail((e&&e.message)||String(e)));
+    }
+  });
 }
-// Only real streets count as "roads" for quests: no footpaths/tracks/cycleways through parks and fields,
-// no motorways (nobody should be sent onto an expressway), no private/closed roads, tunnels, driveways, parking aisles.
+// "Roads" for quests = real streets. No motorways (nobody should be sent onto an expressway), no private/closed roads,
+// tunnels, driveways or parking aisles.
 const ROAD_TYPES=new Set(['trunk','primary','secondary','tertiary','unclassified','residential','living_street','service','trunk_link','primary_link','secondary_link','tertiary_link']);
-function isUsableRoad(el){
+// Only used when an area has almost no real streets (campus, park, village): walkable paths still count so quests can appear.
+const PATH_TYPES=new Set(['pedestrian','footway','cycleway','path','track']);
+const MIN_STREET_POINTS=15;
+function isUsableRoad(el,includePaths){
   const t=(el&&el.tags)||{};
-  if(!ROAD_TYPES.has(t.highway)) return false;
+  if(!(ROAD_TYPES.has(t.highway)||(includePaths&&PATH_TYPES.has(t.highway)))) return false;
   if(t.area==='yes') return false;
   if(t.access==='private'||t.access==='no') return false;
   if(t.tunnel&&t.tunnel!=='no') return false;
   if(t.service==='driveway'||t.service==='parking_aisle'||t.service==='drive-through') return false;
   return true;
 }
-function sampleRoadPointsFromOverpass(elements, centerLat, centerLng, maxRadius, maxPoints){
+function sampleRoadPointsFromOverpass(elements, centerLat, centerLng, maxRadius, maxPoints, includePaths){
   const pts=[];
   for(const el of elements||[]){
-    if(!isUsableRoad(el)) continue;
+    if(!isUsableRoad(el,includePaths)) continue;
     const geom=el.geometry; if(!geom||geom.length<2) continue;
     for(const g of geom){
       if(!g||!Number.isFinite(g.lat)||!Number.isFinite(g.lon)) continue;
@@ -106,6 +128,16 @@ function sampleRoadPointsFromOverpass(elements, centerLat, centerLng, maxRadius,
   for(let i=pts.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pts[i],pts[j]]=[pts[j],pts[i]]; }
   return pts.slice(0, maxPoints||1200);
 }
+function roadQuery(types,lat,lng,r){
+  return `[out:json][timeout:12];way["highway"~"^(${types.join('|')})$"](around:${Math.floor(r)},${lat},${lng});out geom;`;
+}
+// Remember answers (same place = same roads) so repeat games start with roads instantly.
+const ROAD_CACHE=new Map(), ROAD_CACHE_MS=12*3600*1000;
+const roadCacheKey=(lat,lng,r)=>lat.toFixed(3)+'|'+lng.toFixed(3)+'|'+Math.round(r/50);
+function roadCacheGet(k){ const h=ROAD_CACHE.get(k); if(!h) return null; if(Date.now()-h.at>ROAD_CACHE_MS){ ROAD_CACHE.delete(k); return null; } return h; }
+function roadCacheSet(k,points,tier){ ROAD_CACHE.set(k,{points,tier,at:Date.now()}); while(ROAD_CACHE.size>40) ROAD_CACHE.delete(ROAD_CACHE.keys().next().value); }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const ROAD_RETRY_MS=(process.env.ROAD_RETRY_MS||'0,3000,8000').split(',').map(Number).filter(Number.isFinite);
 
 function clampNumber(v,min,max,fallback){
   const n=Number(v); return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;
@@ -119,7 +151,7 @@ class Game {
     this.headStartSeconds=clampNumber(settings.headStartSeconds,0,1800,300);
     this.centerLat=Number.isFinite(Number(settings.centerLat))?Number(settings.centerLat):28.6139;
     this.centerLng=Number.isFinite(Number(settings.centerLng))?Number(settings.centerLng):77.2090;
-    this.initialRadiusMeters=clampNumber(settings.initialRadiusMeters,500,20000,3000);
+    this.initialRadiusMeters=clampNumber(settings.initialRadiusMeters,400,20000,3000);
     // Host-selected team size. Supported: 1–8 players per team.
     this.teamSize=Math.floor(clampNumber(settings.teamSize,1,8,2));
     this.teamFormation=settings.teamFormation==='choose'?'choose':'random';
@@ -146,7 +178,7 @@ class Game {
     this.pendingSafeZone=null; // {centerLat,centerLng,radiusMeters,relocEndsAt}
     this.visionEffects=[]; // temporary hunter/runner vision
     this.finalCircleTriggered=false;
-    this.roadPoints=[]; this.roadsLoaded=false; this._roadLoading=null; this.questsPending=false; this._lastRoadRetryAt=0;
+    this.roadPoints=[]; this.roadsLoaded=false; this._roadLoading=null; this.questsPending=false; this._lastRoadRetryAt=0; this.roadSource=null; this.roadTier=0; this.roadError=null; this.roadRetryMs=ROAD_RETRY_MS;
     this.shrinkCount=0;
     this.matchStats={ teams:{}, tags:0, questsCompleted:0, startedAt:null };
     this.callouts=[]; this.playerStats=new Map(); this.mvp=null; this.battleCards=[];
@@ -321,17 +353,63 @@ class Game {
   }
   async _loadRoadNetworkNow(){
     const lat=this.centerLat, lng=this.centerLng, r=Math.min(this.initialRadiusMeters, 8000);
-    const q=`[out:json][timeout:18];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|trunk_link|primary_link|secondary_link|tertiary_link)$"](around:${Math.floor(r)},${lat},${lng});out geom;`;
-    try{
-      const data=await overpassQuery(q);
-      this.roadPoints=sampleRoadPointsFromOverpass(data.elements||[], lat, lng, r, 1200);
-      this.roadsLoaded=this.roadPoints.length>0;
-      console.log(`[ROADS] game ${this.code}: ${this.roadPoints.length} road points`);
-      return this.roadsLoaded;
-    }catch(e){
-      console.error('[ROADS] load failed', e&&e.message||e);
-      this.roadsLoaded=false; return false;
+    const key=roadCacheKey(lat,lng,r), hit=roadCacheGet(key);
+    if(hit){
+      this.roadPoints=hit.points.slice(); this.roadsLoaded=true; this.roadSource='cache'; this.roadTier=hit.tier; this.roadError=null;
+      console.log(`[ROADS] game ${this.code}: ${this.roadPoints.length} road points (remembered from an earlier game here)`);
+      return true;
     }
+    let lastErr=null;
+    for(let round=0; round<this.roadRetryMs.length; round++){
+      if(this.roadRetryMs[round]>0) await sleep(this.roadRetryMs[round]);
+      try{
+        // 1) real streets
+        const d1=await overpassQuery(roadQuery([...ROAD_TYPES],lat,lng,r));
+        let pts=sampleRoadPointsFromOverpass(d1.elements, lat, lng, r, 1200), tier=1, extraErr=null;
+        // 2) almost no streets here (campus, park, village)? walkable paths count too, so quests can still appear
+        if(pts.length<MIN_STREET_POINTS){
+          try{
+            const d2=await overpassQuery(roadQuery([...PATH_TYPES],lat,lng,r));
+            const extra=sampleRoadPointsFromOverpass(d2.elements, lat, lng, r, 1200, true);
+            if(extra.length){ pts=pts.concat(extra); tier=2; }
+          }catch(e){ extraErr=e; }
+          if(!pts.length&&extraErr) throw extraErr;
+        }
+        this.roadPoints=pts.slice(0,1200); this.roadsLoaded=this.roadPoints.length>0; this.roadTier=tier; this.roadSource='server';
+        this.roadError=this.roadsLoaded?null:'no roads found near the game center';
+        console.log(`[ROADS] game ${this.code}: ${this.roadPoints.length} road points${tier===2?' (streets + walkable paths)':''}`);
+        if(this.roadsLoaded) roadCacheSet(key,this.roadPoints.slice(),tier);
+        return this.roadsLoaded;
+      }catch(e){
+        lastErr=e; console.error(`[ROADS] load failed (try ${round+1}/${this.roadRetryMs.length})`, (e&&e.message)||e);
+      }
+    }
+    this.roadsLoaded=false; this.roadError='road server not reachable'; this.roadLastErr=String((lastErr&&lastErr.message)||lastErr||'').slice(0,300);
+    return false;
+  }
+  // Backup: the host's PHONE fetched the road data (Overpass sometimes refuses cloud servers) and uploaded it.
+  acceptHostRoads(points){
+    if(this.status==='ended') return {error:'Game ended'};
+    if(!Array.isArray(points)) return {error:'points must be a list'};
+    const have=(this.roadPoints||[]).length;
+    if(have>=20) return {ok:true, ignored:true, points:have};
+    const out=[], R=this.initialRadiusMeters+25;
+    for(const p of points.slice(0,4000)){
+      const la=Array.isArray(p)?Number(p[0]):Number(p&&p.lat), lo=Array.isArray(p)?Number(p[1]):Number(p&&p.lng);
+      if(!Number.isFinite(la)||!Number.isFinite(lo)||Math.abs(la)>90||Math.abs(lo)>180) continue;
+      if(haversine(this.centerLat,this.centerLng,la,lo)>R) continue;   // only points inside the game area
+      out.push({lat:la,lng:lo});
+    }
+    if(out.length<3) return {error:'Not enough valid road points inside the game area'};
+    if(out.length<=have) return {ok:true, ignored:true, points:have};
+    for(let i=out.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [out[i],out[j]]=[out[j],out[i]]; }
+    this.roadPoints=out.slice(0,1200); this.roadsLoaded=true; this.roadSource='host'; this.roadTier=0; this.roadError=null;
+    console.log(`[ROADS] game ${this.code}: ${this.roadPoints.length} road points (uploaded by the host's phone)`);
+    return {ok:true, points:this.roadPoints.length};
+  }
+  _roadInfo(){
+    return {loaded:!!(this.roadPoints&&this.roadPoints.length), points:(this.roadPoints||[]).length, loading:!!this._roadLoading,
+            source:this.roadSource, tier:this.roadTier, error:this.roadError};
   }
   _roadPointInCircle(maxRadius){
     const r=maxRadius!=null?maxRadius:Math.max(100,this.initialRadiusMeters-120);
@@ -533,6 +611,9 @@ class Game {
       this.nextSnapshotAt=now+this.snapshotIntervalSeconds*1000;
     }
 
+    // Quests that were waiting for road data are created the moment roads exist (also during the head start, not only after it).
+    if(this.questsPending&&(this.status==='head_start'||this.status==='active')) this._retryQuestsWhenRoadsReady(now);
+
     if(this.status==='active'){
       if(now>=this.nextSnapshotAt){ this.takeSnapshot(); this.nextSnapshotAt=now+this.snapshotIntervalSeconds*1000; }
       if(now>=this.nextZoneAt){ this.spawnZone(); this.nextZoneAt=now+this.randomZoneDelayMs(); }
@@ -576,7 +657,6 @@ class Game {
         this.nextShrinkAt=now+this.nextShrinkDelayMs();
       }
 
-      if(this.questsPending) this._retryQuestsWhenRoadsReady(now);
       this.processQuests(now);
       this.checkBuffVision(now);
 
@@ -1113,7 +1193,7 @@ class Game {
       zoneMinIntervalSeconds:this.zoneMinIntervalSeconds, zoneMaxIntervalSeconds:this.zoneMaxIntervalSeconds, buffSpawnChance:this.buffSpawnChance,
       headStartSeconds:this.headStartSeconds, centerLat:this.centerLat, centerLng:this.centerLng,
       initialRadiusMeters:this.initialRadiusMeters, teamSize:this.teamSize, teamFormation:this.teamFormation, teamMode:this.teamMode, customRunners:this.customRunners, customTaggers:this.customTaggers,
-      safeZone:this.safeZone, pendingSafeZone:this.pendingSafeZone, zoneStatus:this._zoneStatus(player),
+      roads:this._roadInfo(), safeZone:this.safeZone, pendingSafeZone:this.pendingSafeZone, zoneStatus:this._zoneStatus(player),
       startedAt:this.startedAt, endsAt:this.endsAt, headStartEndsAt:this.headStartEndsAt,
       nextSnapshotAt:this.nextSnapshotAt, nextShrinkAt:(this.pendingSafeZone?null:this.nextShrinkAt), now, winner:this.winner, forfeit:this.forfeit, hostPlayerId:this.hostPlayerId, isHost:player.id===this.hostPlayerId,
       zoneTransitionSeconds:this.zoneTransitionSeconds, nextShrinkAt:this.nextShrinkAt,
@@ -1350,7 +1430,7 @@ const server=http.createServer((req,res)=>{
       // Preset mode: host only chose duration, radius, teams, center — server fills the rest.
       if(data.preset === true || data.preset === 'true' || data.preset === 1){
         // same limits the Game itself applies, so preset timings always match the real game length and radius
-        const auto = computePresetSettings(clampNumber(durationSeconds,300,10800,1800), clampNumber(initialRadiusMeters,500,20000,3000));
+        const auto = computePresetSettings(clampNumber(durationSeconds,300,10800,1800), clampNumber(initialRadiusMeters,400,20000,3000));
         settings = Object.assign(settings, auto);
       }
       const game=new Game(settings);
@@ -1404,9 +1484,20 @@ const server=http.createServer((req,res)=>{
       const game=games.get(data.gameId); if(!game) return json({error:'Not found'},404);
       const player=auth(game,data); if(!player) return json({error:'Unauthorized'},401);
       if(game.hostPlayerId!==player.id) return json({error:'Only lobby creator can start'},403);
-      try{ await Promise.race([game.loadRoadNetwork(), new Promise(r=>setTimeout(r,10000))]); }catch(e){ console.error('[ROADS] start', e); }
+      // Starting never waits for road data. If it isn't loaded yet it keeps loading in the background and quests appear as soon as it is.
+      if(!game.roadsLoaded) game.loadRoadNetwork().catch(()=>{});
       const result=game.start(); if(result.error) return json(result,400);
       json({ok:true, roadsLoaded:!!game.roadsLoaded, roadPoints:(game.roadPoints||[]).length});
+    }); return;
+  }
+  if(pth==='/api/roads'&&req.method==='POST'){
+    body(data=>{
+      const game=games.get(data.gameId); if(!game) return json({error:'Not found'},404);
+      const player=auth(game,data); if(!player) return json({error:'Unauthorized'},401);
+      if(game.hostPlayerId!==player.id) return json({error:'Only the host can upload road data'},403);
+      const result=game.acceptHostRoads(data.points);
+      if(result.error) return json(result,400);
+      json(result);
     }); return;
   }
   if(pth==='/api/location'&&req.method==='POST'){
@@ -1501,4 +1592,4 @@ if(require.main===module){
   });
 }
 
-module.exports={Game,genTeamCode,haversine,isInside,computePresetSettings,isUsableRoad,sampleRoadPointsFromOverpass};
+module.exports={Game,genTeamCode,haversine,isInside,computePresetSettings,isUsableRoad,sampleRoadPointsFromOverpass,overpassQuery,ROAD_CACHE};
