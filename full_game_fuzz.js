@@ -69,7 +69,7 @@ function playOneGame(seed,verbose){
       if(team){
         if(team.role==='tagger'){
           let best=null,bd=1e15; for(const t of g.teams.values()){ if(t.role!=='runner'||t.status!=='active') continue; for(const pid of t.playerIds){ const q=g.players.get(pid); const d=haversine(s.lat,s.lng,q.lat,q.lng); if(d<bd){bd=d;best={q,t};} } }
-          if(best){ tx=best.q.lat; ty=best.q.lng; if(bd<25&&g.status==='active'&&chance(.5)){ const r=g.tagTeam(p.id,chance(.9)?best.t.secretCode:'ZZZZZZ'); if(r.error&&!/Invalid|Wrong|locked|penalty|Wait/i.test(r.error)) bad('tagTeam odd error: '+r.error); } }
+          if(best){ tx=best.q.lat; ty=best.q.lng; if(bd<25&&g.status==='active'&&chance(.5)){ const r=g.tagTeam(p.id,chance(.9)?best.t.secretCode:'ZZZZZZ'); if(r.error&&!/Invalid|Wrong|locked|penalty|Wait|already out/i.test(r.error)) bad('tagTeam odd error: '+r.error); } }
         } else {
           const q=g.quests.find(x=>x.teamId===team.id&&x.status==='active');
           if(q&&q.type!=='distance'){ tx=q.targetLat; ty=q.targetLng; }

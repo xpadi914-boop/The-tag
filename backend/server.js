@@ -139,6 +139,15 @@ function roadCacheSet(k,points,tier){ ROAD_CACHE.set(k,{points,tier,at:Date.now(
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const ROAD_RETRY_MS=(process.env.ROAD_RETRY_MS||'0,3000,8000').split(',').map(Number).filter(Number.isFinite);
 
+// What the losing side owes the winners. (Keep them safe, funny and doable outdoors.)
+const FORFEITS=[
+  'Do 20 push-ups','Sing for 30 seconds','Tell an embarrassing story','Buy snacks for winners','Dance for 1 minute','Speak in accent for 10 minutes',
+  'Buy chai for the winners','Carry the winners\' bags for 10 minutes','Walk like a robot for 2 minutes','Do your best animal impression for 30 seconds',
+  'Talk like a pirate for 10 minutes','Give each winner a genuine compliment','Make a dramatic victory speech for the winners','Do 15 jumping jacks while saying the alphabet',
+  'Speak only in questions for 5 minutes','Be the winners\' butler for 15 minutes','Say everything in rhyme for 5 minutes','Clap and cheer for the winners for 30 seconds',
+  'Act out a movie scene the winners pick','Hold a plank for 30 seconds','Hop on one foot for 30 seconds','Take a silly group selfie with the winners',
+  'Let the winners pick your next song','Do the worst dance you can for 30 seconds','Draw a portrait of the winners','Wear your jacket inside out for the next hour'
+];
 function clampNumber(v,min,max,fallback){
   const n=Number(v); return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;
 }
@@ -921,18 +930,29 @@ class Game {
     const taggerTeam=this.teams.get(tagger.teamId);
     if(!taggerTeam||taggerTeam.role!=='tagger') return {error:'Only Taggers can tag'};
     if(this.status!=='active') return {error:'Tagging is locked until Taggers are released'};
+    const codeStr=String(code||'').trim().toUpperCase();
+    // The same code sent again right after it worked (double tap, slow connection, a retry) must get the SAME success answer.
+    // Before, the second request found the runner already out and answered "Invalid code" AND counted it as a wrong guess.
+    const lastTag=taggerTeam.lastTag;
+    if(lastTag&&lastTag.code===codeStr&&Date.now()-lastTag.at<10000) return {...lastTag.response,duplicate:true};
     if(taggerTeam.penaltyUntil&&Date.now()<taggerTeam.penaltyUntil) return {error:'Under movement penalty'};
     const nowT=Date.now();
     if(taggerTeam.tagLockUntil&&nowT<taggerTeam.tagLockUntil) return {error:`Too many wrong codes. Wait ${Math.ceil((taggerTeam.tagLockUntil-nowT)/1000)}s`,locked:true};
-    const codeStr=String(code||'').trim().toUpperCase();
     let target=null;
     for(const t of this.teams.values()){
       if(t.secretCode&&t.secretCode.toUpperCase()===codeStr&&t.role==='runner'&&t.status==='active'){ target=t; break; }
     }
     if(!target){
+      // A real code of a runner team that is already out is not a wrong guess.
+      const gone=[...this.teams.values()].find(t=>t.role==='runner'&&t.status==='eliminated'&&t.secretCode&&t.secretCode.toUpperCase()===codeStr);
+      if(gone){
+        const byUs=this.tags.some(x=>x.runnerTeamId===gone.id&&x.taggerTeamId===taggerTeam.id&&x.result==='eliminated');
+        if(byUs) return {ok:true,result:'already_tagged',duplicate:true,message:`Team ${gone.number} is already out. Your team tagged them!`};
+        return {error:`Team ${gone.number} is already out of the game`,alreadyOut:true};
+      }
       taggerTeam.tagFails=(taggerTeam.tagFails||[]).filter(x=>nowT-x<60000); taggerTeam.tagFails.push(nowT);
       if(taggerTeam.tagFails.length>=3){ taggerTeam.tagLockUntil=nowT+60000; taggerTeam.tagFails=[]; return {error:'Wrong code 3 times. Tagging locked for 60s.',locked:true}; }
-      return {error:`Invalid or eliminated Team Code (${3-taggerTeam.tagFails.length} tries left)`};
+      return {error:`Invalid Team Code (${3-taggerTeam.tagFails.length} tries left)`};
     }
     taggerTeam.tagFails=[];
     if(target.hasExtraHealth){
@@ -945,7 +965,9 @@ class Game {
       this.matchStats.tags = (this.matchStats.tags||0)+1;
       this._ps(taggerPlayerId).absorbed+=1;
       this.tags.push({at:Date.now(),taggerTeamId:taggerTeam.id,runnerTeamId:target.id,result:'extra_health',penaltySeconds});
-      return {ok:true,result:'extra_health',penaltySeconds,message:`EXTRA HEALTH ACTIVATED — TAG ABSORBED. STOP FOR ${penaltyLabel} AND LET THE RUNNERS ESCAPE.`};
+      const resp={ok:true,result:'extra_health',penaltySeconds,message:`EXTRA HEALTH ACTIVATED — TAG ABSORBED. STOP FOR ${penaltyLabel} AND LET THE RUNNERS ESCAPE.`};
+      taggerTeam.lastTag={code:codeStr,at:Date.now(),response:resp};
+      return resp;
     } else {
       target.status='eliminated'; target.health=0;
       if(this.matchStats.teams[target.id]){ this.matchStats.teams[target.id].survived=false; this.matchStats.teams[target.id].eliminatedAt=Date.now(); }
@@ -955,7 +977,9 @@ class Game {
       taggerTeam.runnerVisionUntil = Date.now() + 15000;
       this._ps(taggerPlayerId).tags+=1;
       this.tags.push({at:Date.now(),taggerTeamId:taggerTeam.id,runnerTeamId:target.id,result:'eliminated'});
-      return {ok:true,result:'eliminated',message:`Team ${target.number} eliminated! 15s Runner Vision granted.`};
+      const resp={ok:true,result:'eliminated',message:`Team ${target.number} eliminated! 15s Runner Vision granted.`};
+      taggerTeam.lastTag={code:codeStr,at:Date.now(),response:resp};
+      return resp;
     }
   }
 
@@ -1062,8 +1086,7 @@ class Game {
 
   endGame(side){
     this.status='ended'; this.winner=side;
-    const forfeits=['Do 20 push-ups','Sing for 30 seconds','Tell an embarrassing story','Buy snacks for winners','Dance for 1 minute','Speak in accent for 10 minutes'];
-    this.forfeit=forfeits[Math.floor(Math.random()*forfeits.length)];
+    this.forfeit=FORFEITS[Math.floor(Math.random()*FORFEITS.length)];
     const now=Date.now();
     for(const t of this.teams.values()){
       const st=this.matchStats.teams[t.id];
@@ -1080,13 +1103,14 @@ class Game {
       const cards=[];
       for(const t of this.teams.values()){
         const st=this.matchStats.teams[t.id]||{};
-        const members=[]; const path=[];
+        const members=[]; let path=[];
         for(const pid of t.playerIds){
           const p=this.players.get(pid); if(!p) continue;
           members.push({id:p.id,name:p.name});
-          for(const pt of (p.pathTrail||[])){
-            if(pt.t>=cut) path.push({lat:pt.lat,lng:pt.lng,t:pt.t,playerId:pid});
-          }
+          // The replay follows ONE teammate's route (the one with the most points). Mixing every teammate's points by time
+          // made the marker jump back and forth between them.
+          const mine=[]; for(const pt of (p.pathTrail||[])){ if(pt.t>=cut) mine.push({lat:pt.lat,lng:pt.lng,t:pt.t,playerId:pid}); }
+          if(mine.length>path.length) path=mine;
         }
         path.sort((a,b)=>a.t-b.t);
         const thin=path.filter((_,i)=>i===0||i===path.length-1||i%2===0).slice(0,200);
@@ -1592,4 +1616,4 @@ if(require.main===module){
   });
 }
 
-module.exports={Game,genTeamCode,haversine,isInside,computePresetSettings,isUsableRoad,sampleRoadPointsFromOverpass,overpassQuery,ROAD_CACHE};
+module.exports={Game,genTeamCode,haversine,isInside,computePresetSettings,isUsableRoad,sampleRoadPointsFromOverpass,overpassQuery,ROAD_CACHE,FORFEITS};

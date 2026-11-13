@@ -1,5 +1,5 @@
 const assert=require('assert');
-const {Game,isInside,haversine,isUsableRoad,sampleRoadPointsFromOverpass}=require('./backend/server');
+const {Game,isInside,haversine,isUsableRoad,sampleRoadPointsFromOverpass,FORFEITS}=require('./backend/server');
 function add(g,n){return Array.from({length:n},(_,i)=>g.addPlayer('P'+i));}
 // Fake street grid around the game center (quests are road-only, so a game needs road data to make quests).
 function makeRoads(g){
@@ -214,6 +214,49 @@ assert.ok(relocated>0,'zones never relocated, they only ever shrank in place');
   assert.ok(g.matchStats.teams[victim.id].surviveSeconds>=89&&g.matchStats.teams[victim.id].surviveSeconds<=95,'survive time wrong: '+g.matchStats.teams[victim.id].surviveSeconds);
   const card=g.getStateFor(v.id).battleCards.find(c=>c.teamId===victim.id);
   assert.equal(card.survived,false,'battle card says the eliminated team survived'); assert.equal(card.status,'eliminated');
+}
+
+
+// 12. Tagging: sending the same code again after it worked (double tap / slow connection) is NOT an error and NOT a wrong guess
+{
+  const g=new Game({teamSize:1,durationSeconds:3600,headStartSeconds:0,initialRadiusMeters:3000}); add(g,5); start(g); g.status='active';
+  const taggers=[...g.teams.values()].filter(t=>t.role==='tagger'), runners=[...g.teams.values()].filter(t=>t.role==='runner');
+  assert.ok(taggers.length>=1&&runners.length>=3,'need 1 tagger + 3 runner teams for this test');
+  const T=taggers[0], tp=g.players.get(T.playerIds[0]);
+  const r1=g.tagTeam(tp.id,runners[0].secretCode); assert.ok(r1.ok&&r1.result==='eliminated',JSON.stringify(r1));
+  for(let i=0;i<5;i++){ const r=g.tagTeam(tp.id,runners[0].secretCode.toLowerCase()); assert.ok(r.ok&&r.duplicate,'repeat tag answered '+JSON.stringify(r)); }
+  assert.equal((T.tagFails||[]).length,0,'repeat taggings were counted as wrong guesses'); assert.ok(!T.tagLockUntil,'tagger got locked by repeats');
+  T.lastTag.at-=60000;                                         // a minute later the same code still says success for the team that did it
+  const later=g.tagTeam(tp.id,runners[0].secretCode); assert.ok(later.ok&&later.result==='already_tagged',JSON.stringify(later));
+  runners[1].status='eliminated';                              // out because of the zone / another team: clear message, still not a wrong guess
+  const out=g.tagTeam(tp.id,runners[1].secretCode); assert.ok(out.error&&out.alreadyOut&&/already out/.test(out.error),JSON.stringify(out)); assert.equal((T.tagFails||[]).length,0);
+  const e1=g.tagTeam(tp.id,'ZZZ'); assert.ok(/Invalid Team Code \(2 tries left\)/.test(e1.error),e1.error);   // real wrong codes still count...
+  g.tagTeam(tp.id,'YYY'); const e3=g.tagTeam(tp.id,'XXX'); assert.ok(e3.locked,'3 wrong codes must still lock tagging');          // ...and still lock after 3
+}
+{ // absorbed tag (Extra Health): the repeat gets the same answer, not "Under movement penalty"
+  const g=new Game({teamSize:1,durationSeconds:3600,headStartSeconds:0,initialRadiusMeters:3000}); add(g,4); start(g); g.status='active';
+  const T=[...g.teams.values()].find(t=>t.role==='tagger'), R=[...g.teams.values()].find(t=>t.role==='runner'); R.hasExtraHealth=true;
+  const tp=g.players.get(T.playerIds[0]);
+  const a=g.tagTeam(tp.id,R.secretCode); assert.equal(a.result,'extra_health');
+  const b=g.tagTeam(tp.id,R.secretCode); assert.ok(b.ok&&b.duplicate&&b.result==='extra_health'&&b.message===a.message,JSON.stringify(b));
+  assert.equal(R.status,'active','a repeat must not eliminate a runner whose tag was absorbed'); assert.equal((T.tagFails||[]).length,0);
+}
+// 13. Forfeits: plenty, all different, and the game picks one of them
+assert.ok(FORFEITS.length>=26&&new Set(FORFEITS).size===FORFEITS.length&&FORFEITS.every(f=>typeof f==='string'&&f.length>5&&f.length<70),'forfeit list problem');
+{ const seen=new Set(); for(let i=0;i<400;i++){ const g=new Game({teamSize:1,durationSeconds:3600,initialRadiusMeters:3000}); add(g,2); start(g); g.endGame('host'); assert.ok(FORFEITS.includes(g.forfeit)); seen.add(g.forfeit); } assert.ok(seen.size>=20,'only '+seen.size+' different forfeits came up in 400 games'); }
+
+
+// 14. Replay path of a team follows ONE teammate (it used to zig-zag between teammates)
+{
+  const g=new Game({teamSize:2,durationSeconds:3600,headStartSeconds:0,initialRadiusMeters:3000}); add(g,4); start(g); g.status='active';
+  const team=[...g.teams.values()].find(x=>x.playerIds.length===2); const [a,b]=team.playerIds.map(id=>g.players.get(id)); const t0=Date.now()-120000;
+  a.pathTrail=Array.from({length:30},(_,i)=>({lat:g.centerLat+i*0.0001,lng:g.centerLng,t:t0+i*3000}));
+  b.pathTrail=Array.from({length:20},(_,i)=>({lat:g.centerLat-i*0.0001,lng:g.centerLng,t:t0+i*3000+1500}));  // interleaved in time
+  g.endGame('host'); const card=g.getStateFor(a.id).battleCards.find(c=>c.teamId===team.id);
+  assert.ok(card.path.length>=10,'replay path too short: '+card.path.length);
+  assert.equal(new Set(card.path.map(p=>p.playerId)).size,1,'replay path mixes teammates');
+  for(let i=1;i<card.path.length;i++) assert.ok(card.path[i].t>=card.path[i-1].t,'replay path not in time order');
+  assert.equal(card.path[0].playerId,a.id,'should follow the teammate with the most points');
 }
 
 console.log('BACKEND HARD TESTS: PASS');

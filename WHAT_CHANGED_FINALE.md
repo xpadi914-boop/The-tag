@@ -70,3 +70,16 @@ Three new features. Everything else (snapshots, Extra Health, Ghost, Smoke, Visi
 ## More tests
 - roads_test.js (new): failing/hanging road servers, footpath fallback, memory, host-phone upload, and that Start takes milliseconds. Run `node roads_test.js`.
 - full_game_fuzz.js now also plays 400 m games.
+
+## 11) Tagging: "Invalid code" when the tag actually worked
+- Cause: after a tag worked, the runner team was already out. If the same code was sent again (a second tap on a slow connection), the server answered "Invalid code" AND counted it as a wrong guess. The tagger saw only that last error, kept trying, and got locked for a minute.
+- Now a repeat of a tag that already worked gets the same SUCCESS answer and never counts as a wrong guess. The code of a team that is already out (out from the zone or another team) says "Team N is already out" and is not a wrong guess either. Truly wrong codes still say "Invalid Team Code (n tries left)" and still lock after 3.
+- On the tagger's screen: the TAG TEAM button shows "TAGGING..." and ignores extra taps while waiting. A right code shows a confirmation, clears the box and closes the tag tab. A wrong code shows the error in red and keeps the tab open.
+
+## 12) Replay on the end screen
+- Cause: the end screen was redrawn every second by the page refresh, which wiped the replay map about a second after pressing Replay. A second try showed nothing because the old map was still attached to the deleted box.
+- Now the end screen is only redrawn when something actually changed, each replay builds a fresh map, and the replay draws the route as a growing line with a moving dot.
+- A team's replay now follows ONE teammate's route. Before, it mixed all teammates by time, so duos' replays jumped back and forth.
+
+## 13) Forfeits: 20 more
+- 26 forfeits now (the original 6 plus 20 new ones, for example "Buy chai for the winners", "Talk like a pirate for 10 minutes", "Be the winners' butler for 15 minutes").

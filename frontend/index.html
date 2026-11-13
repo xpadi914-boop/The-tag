@@ -430,7 +430,7 @@ button.kick{width:34px;padding:2px 0!important;font-size:16px!important;backgrou
 .battle-card .bc-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0;font:18px 'VT323',monospace;color:#e5e7eb}
 .battle-card .bc-stats div{background:#111;border:2px solid #333;padding:4px 6px}
 .battle-card .bc-members{font:17px 'VT323',monospace;color:#a3a3a3;margin-bottom:8px}
-.battle-card .bc-map{width:100%;height:160px;border:3px solid #111;background:#0b1220;margin-top:6px}
+.battle-card .bc-map{width:100%;height:210px;border:3px solid #111;background:#0b1220;margin-top:6px}
 .battle-card .bc-actions{display:flex;gap:8px;margin-top:8px}
 .battle-card .bc-actions button{flex:1;font-size:14px;padding:8px}
 .battle-nav{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font:18px 'VT323',monospace;color:#9ca3af}
@@ -1266,7 +1266,7 @@ function renderGame(s) {
     if (s.myTeam && s.myTeam.role === 'tagger') {
       actHtml += `<div style="margin-bottom:12px"><label for="tag-code">Enter Runner Team Code to Tag</label>
         <input id="tag-code" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" placeholder="3-character team code" maxlength="6" style="text-align:center; letter-spacing:6px; font-size:1.3rem; font-weight:700"/>
-        <button class="danger" type="button" style="background:linear-gradient(135deg,#ef4444,#dc2626)" onclick="doTag()">TAG TEAM</button>
+        <button id="tag-btn" class="danger" type="button" style="background:linear-gradient(135deg,#ef4444,#dc2626)" onclick="doTag()">TAG TEAM</button>
         <div id="tag-result" style="margin-top:8px; color:var(--muted)"></div></div>`;
     }
     if (s.myTeam && s.myTeam.role === 'runner') {
@@ -1541,16 +1541,32 @@ async function startGame() {
   try { await api('/api/start', { gameId: S.gameId, playerId: S.playerId }); }
   catch(e) { alert(e.message); }
 }
+let _tagBusy=false;
 async function doTag() {
-  const code = document.getElementById('tag-code')?.value?.trim();
+  if (_tagBusy) return;                                   // a second tap while the first is still travelling does nothing
+  const input = document.getElementById('tag-code');
+  const code = input?.value?.trim();
   if (!code) return alert('Enter code');
+  const btn = document.getElementById('tag-btn'), el = document.getElementById('tag-result');
+  _tagBusy = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'TAGGING...'; }
+  if (el) { el.style.color = 'var(--muted)'; el.textContent = 'Checking code...'; }
   try {
     const res = await api('/api/tag', { gameId: S.gameId, playerId: S.playerId, code });
-    const el = document.getElementById('tag-result');
-    if (el) el.textContent = res.message || res.result;
+    // Right code: no error, tell the tagger, clear the box and close the tag tab.
+    if (input) input.value = '';
+    if (el) el.textContent = '';
+    const absorbed = res.result === 'extra_health';
+    toast((absorbed ? '🛡️ ' : '🎯 ') + (res.message || 'Tagged!'), absorbed ? 'warn' : 'ok');
+    closePanels();
+    fetchState();
   } catch(e) {
-    const el = document.getElementById('tag-result');
-    if (el) el.textContent = e.message;
+    // Wrong code (or locked / penalty): say so and keep the tab open.
+    if (el) { el.style.color = '#ef4444'; el.textContent = e.message; }
+  } finally {
+    _tagBusy = false;
+    const b2 = document.getElementById('tag-btn');
+    if (b2) { b2.disabled = false; b2.textContent = 'TAG TEAM'; }
   }
 }
 async function activateQuest(id) {
@@ -1932,7 +1948,7 @@ function renderBattleCards(s){
       members:[], path:[]
     }));
   }
-  if(!cards.length){ stEl.innerHTML=''; return; }
+  if(!cards.length){ stEl.innerHTML=''; S._battleSig=null; return; }
   // Own team first, then others by number
   const myNum=s.myTeam&&s.myTeam.number;
   cards.sort((a,b)=>{
@@ -1943,6 +1959,10 @@ function renderBattleCards(s){
     return (a.number||0)-(b.number||0);
   });
   S.battleCards=cards;
+  // The page refreshes every second. Once the game is over nothing changes, so leave the cards (and a playing replay) alone.
+  const sig=JSON.stringify([S.gameId,myNum,cards.map(c=>[c.number,c.survived,c.distanceM,c.quests,c.tagsMade,c.surviveSeconds,(c.path||[]).length]),(s.matchStats&&s.matchStats.tags)||0,(s.matchStats&&s.matchStats.questsCompleted)||0]);
+  if(S._battleSig===sig && document.getElementById('battle-card-host')) return;
+  S._battleSig=sig; stopBattleReplay();
   if(S.battleIdx==null || S.battleIdx>=cards.length) S.battleIdx=0;
   stEl.innerHTML=`<div class="battle-wrap">
     <div class="battle-hint">BATTLE CARDS · swipe or use arrows</div>
@@ -1968,6 +1988,7 @@ function battlePrev(){ if(!S.battleCards||!S.battleCards.length) return; S.battl
 function battleNext(){ if(!S.battleCards||!S.battleCards.length) return; S.battleIdx=(S.battleIdx+1)%S.battleCards.length; paintBattleCard(); }
 function paintBattleCard(){
   const cards=S.battleCards||[]; const i=S.battleIdx||0; const c=cards[i]; if(!c) return;
+  stopBattleReplay();                                      // the card is about to be redrawn, so any old replay must stop
   const host=document.getElementById('battle-card-host'); const pos=document.getElementById('battle-pos');
   if(pos) pos.textContent=(i+1)+' / '+cards.length+(c.number===(S.last&&S.last.myTeam&&S.last.myTeam.number)?' · YOUR TEAM':'');
   const mins=Math.floor((c.surviveSeconds||0)/60), sec=(c.surviveSeconds||0)%60;
@@ -1994,45 +2015,41 @@ function paintBattleCard(){
     <div id="battle-replay-map" class="bc-map" style="display:none"></div>
   </div>`;
 }
+function stopBattleReplay(){
+  clearInterval(S.battleReplayTimer); S.battleReplayTimer=null;
+  (S.battleOverlays||[]).forEach(o=>{ try{o.setMap(null);}catch(e){} });
+  S.battleOverlays=[]; S.battleMap=null;                  // a new card has a new map box, so always start a fresh map
+}
 function playBattleReplay(){
   const c=(S.battleCards||[])[S.battleIdx||0]; if(!c||!c.path||c.path.length<2) return;
-  const el=document.getElementById('battle-replay-map'); if(!el||!window.google||!google.maps) return;
+  const el=document.getElementById('battle-replay-map'); if(!el) return;
+  if(!window.google||!google.maps){ toast('Map not available, cannot replay','bad'); return; }
+  stopBattleReplay();
   el.style.display='block';
-  const path=c.path.map(p=>({lat:p.lat,lng:p.lng}));
-  if(!S.battleMap){
-    S.battleMap=new google.maps.Map(el,{mapTypeId:'roadmap',disableDefaultUI:true,zoomControl:true,clickableIcons:false});
-  } else {
-    S.battleMap.setOptions({});
-    // re-attach to div if needed
-  }
-  const map=S.battleMap;
-  // Clear old overlays
-  (S.battleOverlays||[]).forEach(o=>{ try{o.setMap(null);}catch(e){} });
-  S.battleOverlays=[];
-  const line=new google.maps.Polyline({
-    path, map, strokeColor:c.color||'#22c55e', strokeOpacity:0.85, strokeWeight:5
-  });
-  S.battleOverlays.push(line);
-  const bounds=new google.maps.LatLngBounds();
-  path.forEach(p=>bounds.extend(p));
-  map.fitBounds(bounds, 24);
-  const marker=new google.maps.Marker({
-    map, position:path[0],
-    icon:{path:google.maps.SymbolPath.CIRCLE, scale:8, fillColor:c.color||'#fff', fillOpacity:1, strokeColor:'#111', strokeWeight:2}
-  });
-  S.battleOverlays.push(marker);
+  const path=c.path.map(p=>({lat:p.lat,lng:p.lng})), col=c.color||'#22c55e';
+  const map=S.battleMap=new google.maps.Map(el,{center:path[0],zoom:17,mapTypeId:'roadmap',disableDefaultUI:true,zoomControl:true,clickableIcons:false});
+  const faint=new google.maps.Polyline({path,map,strokeColor:col,strokeOpacity:0.3,strokeWeight:4});          // the whole route, faint
+  const trail=new google.maps.Polyline({path:[path[0]],map,strokeColor:col,strokeOpacity:0.95,strokeWeight:5});  // grows as the replay plays
+  const marker=new google.maps.Marker({map,position:path[0],
+    icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:col,fillOpacity:1,strokeColor:'#111',strokeWeight:2}});
+  S.battleOverlays=[faint,trail,marker];
+  const bounds=new google.maps.LatLngBounds(); path.forEach(p=>bounds.extend(p));
+  map.fitBounds(bounds,24);
+  try{ google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom&&map.getZoom()>18) map.setZoom(18); }); }catch(e){}
+  try{ el.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(e){}
   let step=0;
-  clearInterval(S.battleReplayTimer);
   S.battleReplayTimer=setInterval(()=>{
     step++;
-    if(step>=path.length){ clearInterval(S.battleReplayTimer); return; }
+    if(step>=path.length){ clearInterval(S.battleReplayTimer); S.battleReplayTimer=null; return; }
     marker.setPosition(path[step]);
+    trail.setPath(path.slice(0,step+1));
   }, Math.max(40, Math.floor(8000/path.length)));
 }
 
 function renderMvp(s){
   const el=document.getElementById('over-mvp');if(!el)return;const m=s.mvp;
-  if(!m||!m.mvp){el.innerHTML='';return;}
+  if(!m||!m.mvp){el.innerHTML='';S._mvpSig=null;return;}
+  const msig=JSON.stringify([S.gameId,S.playerId,m]); if(S._mvpSig===msig&&el.childElementCount>0) return; S._mvpSig=msig;
   const x=m.mvp,chips=(x.highlights||[]).map(t=>`<span>${esc(t)}</span>`).join('');
   const pod=(m.podium||[]).slice(1).map((p,i)=>`<div><span>${i+2}. ${esc(p.name)} (Team ${p.teamNumber})</span><span>${p.score} pts</span></div>`).join('');
   el.innerHTML=`<div class="mvp"><div class="t">🏆 MVP</div><div class="n">${esc(x.name)}</div><div class="mvp-sub">Team ${x.teamNumber} · ${x.role==='tagger'?'Tagger':'Runner'}${x.playerId===S.playerId?' · THAT IS YOU!':''} · ${x.score} pts</div><div class="c">${chips}</div>${pod?`<div class="pod">${pod}</div>`:''}<div class="mvp-how">Points: tags, survival, quests, distance, teamwork</div></div>`;
